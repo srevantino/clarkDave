@@ -1,0 +1,56 @@
+{
+  "WPFHardwareSummary": {
+    "Content": "Hardware summary",
+    "Description": "CPU, RAM, GPU, motherboard, and storage from WMI/CIM; export to PDF or PNG.",
+    "Category": "System",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFHardwareSummary"
+  },
+  "WPFDnsManager": {
+    "Content": "DNS manager (per adapter)",
+    "Description": "Presets (Cloudflare, Google, Quad9, ...), custom IPv4/IPv6, DHCP reset; apply to selected or all adapters.",
+    "Category": "Network",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFDnsManager"
+  },
+  "WPFStartupManager": {
+    "Content": "Startup manager",
+    "Description": "Registry Run / RunOnce and Startup folder entries; enable or disable; show path and publisher when available.",
+    "Category": "System",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFStartupManager"
+  },
+  "WPFWindowsUpdatePolicy": {
+    "Content": "Windows Update policy",
+    "Description": "Defer feature/quality updates, disable automatic updates (policy), or clear Clark policy keys.",
+    "Category": "Updates",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFWindowsUpdatePolicy"
+  },
+  "WPFDiskToolsWizard": {
+    "Content": "Disk health & tools",
+    "Description": "SMART/health summary, chkdsk scan, diskpart list script; destructive actions require confirmation.",
+    "Category": "Storage",
+    "panel": "2",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFDiskToolsWizard"
+  },
+  "WPFAppRemovalTool": {
+    "Content": "Installed programs & deep clean",
+    "Description": "List programs from registry uninstall keys, uninstall selection, optional restore point, leftover scan (preview).",
+    "Category": "Applications",
+    "panel": "2",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFAppRemovalTool"
+  }
+}

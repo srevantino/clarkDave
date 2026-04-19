@@ -1,0 +1,92 @@
+{
+  "WPFProfileCreateWithOptions": {
+    "Content": "Create profile (pick what to include)",
+    "Description": "Name a profile and choose whether to save current Install apps, Tweaks, toggles, and/or Config features. Optionally merge into an existing profile file.",
+    "Category": "Profiles",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFProfileCreateWithOptions"
+  },
+  "WPFProfileSave": {
+    "Content": "Save Current Selection as Profile",
+    "Description": "Saves selected apps, tweaks, toggles, and features as a named profile.",
+    "Category": "Profiles",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFProfileSave"
+  },
+  "WPFProfileLoad": {
+    "Content": "Load Profile",
+    "Description": "Loads a named profile into current selections.",
+    "Category": "Profiles",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFProfileLoad"
+  },
+  "WPFProfileDelete": {
+    "Content": "Delete Profile",
+    "Description": "Deletes a named saved profile.",
+    "Category": "Profiles",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFProfileDelete"
+  },
+  "WPFProfileExportFile": {
+    "Content": "Export profile to JSON file...",
+    "Description": "Save current app/tweak/toggle/feature selections to a versioned JSON file for backup or sharing.",
+    "Category": "Profiles",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFProfileExportFile"
+  },
+  "WPFProfileImportFile": {
+    "Content": "Import profile from JSON file...",
+    "Description": "Load selections from a Clark profile JSON file (schema v1 or legacy flat array).",
+    "Category": "Profiles",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFProfileImportFile"
+  },
+  "WPFAutoReapplyEnable": {
+    "Content": "Enable Auto Reapply at Startup",
+    "Description": "Creates scheduled tasks that rerun the selected profile on logon and startup.",
+    "Category": "Automation",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFAutoReapplyEnable"
+  },
+  "WPFAutoReapplyDisable": {
+    "Content": "Disable Auto Reapply Tasks",
+    "Description": "Removes scheduled tasks created for automatic reapply.",
+    "Category": "Automation",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFAutoReapplyDisable"
+  },
+  "WPFRollbackLastTweak": {
+    "Content": "Rollback Last Tweak Snapshot",
+    "Description": "Restores the most recent captured tweak state from rollback journal.",
+    "Category": "Recovery",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFRollbackLastTweak"
+  },
+  "WPFRegistryBackupManager": {
+    "Content": "Pre-tweak registry backups...",
+    "Description": "Lists automatic HKLM/HKCU exports before tweaks; open folder or restore selected .reg files (reg import).",
+    "Category": "Recovery",
+    "panel": "1",
+    "Type": "Button",
+    "ButtonWidth": "360",
+    "function": "Invoke-WPFRegistryBackupManager"
+  }
+}

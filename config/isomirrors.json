@@ -1,0 +1,13 @@
+{
+  "_readme": "Optional Internet Archive (or any https) direct links to .iso files. Keys must match the ISO tab: product Windows 11 / Windows 10 and release e.g. Latest, 25H2, 22H2. Empty string skips that slot. When a URL is set, clark tries it first; if download fails, it falls back to Fido (Microsoft).",
+  "internetArchiveIsoUrls": {
+    "Windows 11": {
+      "Latest": "",
+      "25H2": ""
+    },
+    "Windows 10": {
+      "Latest": "",
+      "22H2": ""
+    }
+  }
+}
