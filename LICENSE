@@ -1,67 +1,67 @@
-PROPRIETARY LICENSE — A-SYS_clark
-
-Copyright (c) 2026 Advance Systems 4042. All rights reserved.
-
-This software, including its source code, documentation, and related materials
-(collectively, the "Software"), is the property of Advance Systems 4042 unless
-otherwise stated in writing.
-
-1. RESTRICTED USE
-
-   No person or entity may use, copy, modify, merge, publish, distribute,
-   sublicense, sell, offer for sale, host, or otherwise exploit the Software,
-   in whole or in part, except as expressly permitted below.
-
-2. PERMITTED USERS ONLY
-
-   Use of the Software is allowed solely for:
-
-   (a) Employees and authorized contractors of Advance Systems 4042, acting
-       within the scope of their duties for Advance Systems 4042; and/or
-
-   (b) Staff of other companies that Advance Systems 4042 has expressly
-       designated in a written agreement (including email or other documented
-       authorization) as permitted to use the Software; and/or
-
-   (c) Other users only if Advance Systems 4042 has issued a written
-       authorization (which may be a license agreement, order form, or other
-       signed or countersigned document) that explicitly permits that user or
-       entity to use the Software, and any fees or other payment required under
-       that authorization have been satisfied.
-
-   Any use outside these categories is unauthorized and prohibited.
-
-3. NO IMPLIED RIGHTS
-
-   Except for the limited rights expressly stated in section 2, nothing in this
-   file grants any license or right under copyright, patent, trademark, trade
-   secret, or other intellectual property laws.
-
-4. UNAUTHORIZED USE
-
-   Unauthorized use may result in civil and criminal liability. Advance
-   Systems 4042 may seek all remedies available at law and in equity.
-
-5. DISCLAIMER
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. ADVANCE SYSTEMS 4042
-   IS NOT LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR
-   RELATED TO THE SOFTWARE OR ITS USE, EXCEPT WHERE PROHIBITED BY LAW.
-
-6. UPSTREAM COMPONENTS
-
-   Portions of this repository may be derived from third-party open-source
-   projects (including Clark). Those portions remain subject to their
-   original licenses and copyright notices where they apply; this proprietary
-   license governs use of the Software as distributed by Advance Systems 4042
-   to you only to the extent consistent with those upstream terms.
-
-For permissions, written authorization, or licensing inquiries, contact
-Advance Systems 4042 through your designated business channel.
-
----
-
-Note: This is not legal advice. Advance Systems 4042 should have qualified
-counsel review this license and any customer agreements before enforcement.
+PROPRIETARY LICENSE — A-SYS_clark
+
+Copyright (c) 2026 Advance Systems 4042. All rights reserved.
+
+This software, including its source code, documentation, and related materials
+(collectively, the "Software"), is the property of Advance Systems 4042 unless
+otherwise stated in writing.
+
+1. RESTRICTED USE
+
+   No person or entity may use, copy, modify, merge, publish, distribute,
+   sublicense, sell, offer for sale, host, or otherwise exploit the Software,
+   in whole or in part, except as expressly permitted below.
+
+2. PERMITTED USERS ONLY
+
+   Use of the Software is allowed solely for:
+
+   (a) Employees and authorized contractors of Advance Systems 4042, acting
+       within the scope of their duties for Advance Systems 4042; and/or
+
+   (b) Staff of other companies that Advance Systems 4042 has expressly
+       designated in a written agreement (including email or other documented
+       authorization) as permitted to use the Software; and/or
+
+   (c) Other users only if Advance Systems 4042 has issued a written
+       authorization (which may be a license agreement, order form, or other
+       signed or countersigned document) that explicitly permits that user or
+       entity to use the Software, and any fees or other payment required under
+       that authorization have been satisfied.
+
+   Any use outside these categories is unauthorized and prohibited.
+
+3. NO IMPLIED RIGHTS
+
+   Except for the limited rights expressly stated in section 2, nothing in this
+   file grants any license or right under copyright, patent, trademark, trade
+   secret, or other intellectual property laws.
+
+4. UNAUTHORIZED USE
+
+   Unauthorized use may result in civil and criminal liability. Advance
+   Systems 4042 may seek all remedies available at law and in equity.
+
+5. DISCLAIMER
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. ADVANCE SYSTEMS 4042
+   IS NOT LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR
+   RELATED TO THE SOFTWARE OR ITS USE, EXCEPT WHERE PROHIBITED BY LAW.
+
+6. UPSTREAM COMPONENTS
+
+   Portions of this repository may be derived from third-party open-source
+   projects (including WinUtil). Those portions remain subject to their
+   original licenses and copyright notices where they apply; this proprietary
+   license governs use of the Software as distributed by Advance Systems 4042
+   to you only to the extent consistent with those upstream terms.
+
+For permissions, written authorization, or licensing inquiries, contact
+Advance Systems 4042 through your designated business channel.
+
+---
+
+Note: This is not legal advice. Advance Systems 4042 should have qualified
+counsel review this license and any customer agreements before enforcement.

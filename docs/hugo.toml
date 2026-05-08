@@ -1,238 +1,119 @@
 baseURL = "/"
-
 languageCode = "en-us"
-
 title = "A-SYS_clark Documentation (Advance Systems 4042)"
-
 enableGitInfo = true
-
 canonifyURLs = true
 
-
-
 [[module.mounts]]
-
   source = "assets"
-
   target = "assets"
 
-
-
 [[module.imports]]
-
 path = "github.com/imfing/hextra"
 
-
-
 [[menu.main]]
-
 identifier = "userguide"
-
 name = "User Guides"
-
 pageRef = "/userguide"
-
 weight = 1
 
-
-
 [[menu.main]]
-
 identifier = "documentation"
-
 name = "Developer Documentation"
-
 weight = 2
 
-
-
 [[menu.main]]
-
 identifier = "developer-documentation"
-
 name = "Developer Docs"
-
 pageRef = "/dev"
-
 weight = 1
-
 parent = "documentation"
 
-
-
 [[menu.main]]
-
 identifier = "help"
-
 name = "Help"
-
 weight = 3
 
-
-
 [[menu.main]]
-
 identifier = "faq"
-
 name = "FAQ"
-
 url = "https://github.com/AdvanceSystems4042/A-SYS_clark/blob/main/README.md#faq"
-
 weight = 1
-
 parent = "help"
 
-
-
 [[menu.main]]
-
 identifier = "known-issues"
-
 name = "Known Issues"
-
 url = "https://github.com/AdvanceSystems4042/A-SYS_clark/blob/main/README.md#known-issues"
-
 weight = 2
-
 parent = "help"
 
-
-
 [[menu.main]]
-
 name = "Advance Systems 4042"
-
 url = "https://clark.advancesystems4042.com/"
-
 weight = 5
 
-
-
 [[menu.main]]
-
 name = "Search"
-
 weight = 6
 
-
-
   [menu.main.params]
-
   type = "search"
 
-
-
 [[menu.main]]
-
 name = "GitHub"
-
 weight = 7
-
 url = "https://github.com/AdvanceSystems4042/A-SYS_clark"
 
-
-
   [menu.main.params]
-
   icon = "github"
 
-
-
 [params]
-
-description = "A-SYS_clark by Advance Systems 4042 — installs, tweaks, fixes, and updates for Windows (fork of Clark)."
-
+description = "A-SYS_clark by Advance Systems 4042 — installs, tweaks, fixes, and updates for Windows (fork of WinUtil)."
 displayUpdatedDate = true
-
 dateFormat = "January 2, 2006"
 
-
-
   [params.navbar]
-
   displayTitle = false
-
   displayLogo = false
 
-
-
   [params.theme]
-
   default = "system"
-
   displayToggle = true
 
-
-
   [params.page]
-
   width = "wide"
 
-
-
   [params.footer]
-
   enable = true
-
   displayCopyright = true
-
   displayPoweredBy = false
-
   width = "normal"
 
-
-
 [params.highlight.copy]
-
 enable = true
-
 display = "hover"
-
-
 
 [menu]
 
-
-
   [[menu.sidebar]]
-
   name = "Links"
-
   weight = 1
-
     [menu.sidebar.params]
-
     type = "separator"
 
-
-
   [[menu.sidebar]]
-
   name = "Github Repo ↗"
-
   url = "https://github.com/AdvanceSystems4042/A-SYS_clark"
-
   weight = 2
 
-
-
   [[menu.sidebar]]
-
   name = "Discord Server ↗"
-
   url = "https://discord.gg/RUbZUZyByQ"
-
   weight = 3
 
 
-
-
-
 [markup]
-
   [markup.goldmark]
-
     [markup.goldmark.renderer]
-
       unsafe = true
-

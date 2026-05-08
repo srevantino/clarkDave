@@ -170,7 +170,7 @@ EXIT
     [void]$flow.Controls.Add($btnDiskMgmt)
 
     $btnChk = New-Object System.Windows.Forms.Button
-    $btnChk.Text = 'OS volume health check'
+    $btnChk.Text = 'OS volume scan (read-only)'
     $btnChk.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 6)
     $btnChk.Add_Click({
         $sys = $env:SystemDrive
@@ -178,15 +178,11 @@ EXIT
         if (-not $sys.EndsWith('\')) { $sys = $sys + '\' }
         $r = [System.Windows.Forms.MessageBox]::Show(
             @"
-Run a fuller health check for $sys ?
+Run a read-only online scan of $sys ?
 
-This opens an elevated PowerShell window and runs:
- - Repair-Volume -Scan (filesystem health)
- - chkdsk /scan (filesystem verification pass)
- - SMART reliability counters (reallocated/pending/uncorrectable sectors where available)
+Uses PowerShell Repair-Volume -Scan (Storage module). This is the same class of check as chkdsk /scan, but avoids chkdsk.exe returning Access is denied (exit 5) on some PCs even when elevated.
 
-After checks complete, it can optionally schedule chkdsk /r for reboot
-to perform a deeper bad-sector scan and recovery attempt.
+A UAC prompt may appear. This can take several minutes.
 "@,
             'Confirm',
             'YesNo',
@@ -202,58 +198,17 @@ to perform a deeper bad-sector scan and recovery attempt.
             }
             $letter = $drive.Substring(0, 1).ToUpperInvariant()
             $ps1Path = Join-Path $env:TEMP ("clark-repair-volume-{0}.ps1" -f [Guid]::NewGuid().ToString('n'))
+            # Repair-Volume -Scan uses the Storage stack; chkdsk.exe can still return ERROR_ACCESS_DENIED (5) when elevated.
             $ps1 = @"
-`$Host.UI.RawUI.WindowTitle = 'Clark - Disk health check ($drive)'
+`$Host.UI.RawUI.WindowTitle = 'Clark - Repair-Volume scan ($drive)'
 Write-Host ''
-Write-Host "Clark disk health check for $drive" -ForegroundColor Cyan
+Write-Host "Repair-Volume -Scan on $drive (read-only online scan)" -ForegroundColor Cyan
 Write-Host ''
 try {
-    Import-Module Storage -ErrorAction SilentlyContinue
-
-    Write-Host '1) Filesystem online scan (Repair-Volume -Scan)...' -ForegroundColor Yellow
-    Repair-Volume -DriveLetter '$letter' -Scan -ErrorAction Continue
+    Import-Module Storage -ErrorAction Stop
+    Repair-Volume -DriveLetter '$letter' -Scan -ErrorAction Stop
     Write-Host ''
-
-    Write-Host '2) Filesystem verification (chkdsk /scan)...' -ForegroundColor Yellow
-    cmd /c "chkdsk $drive /scan"
-    Write-Host ''
-
-    Write-Host '3) Device SMART / reliability counters...' -ForegroundColor Yellow
-    `$diskObj = Get-Volume -DriveLetter '$letter' -ErrorAction SilentlyContinue |
-        Get-Partition -ErrorAction SilentlyContinue |
-        Get-Disk -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-
-    if (`$null -ne `$diskObj) {
-        Write-Host ("Disk: #{0} {1}" -f `$diskObj.Number, `$diskObj.FriendlyName) -ForegroundColor DarkGray
-        `$rel = Get-PhysicalDisk -ErrorAction SilentlyContinue |
-            Where-Object { `$_.FriendlyName -eq `$diskObj.FriendlyName } |
-            Get-StorageReliabilityCounter -ErrorAction SilentlyContinue
-
-        if (-not `$rel -or `$rel.Count -eq 0) {
-            `$rel = Get-PhysicalDisk -ErrorAction SilentlyContinue | Get-StorageReliabilityCounter -ErrorAction SilentlyContinue
-        }
-
-        if (`$rel -and `$rel.Count -gt 0) {
-            foreach (`$r in `$rel) {
-                Write-Host ("- Temperature: {0}C  Reallocated: {1}  Pending: {2}  Uncorrectable: {3}  Wear: {4}" -f `$r.Temperature, `$r.ReallocatedSectors, `$r.PendingSectors, `$r.UncorrectableSectors, `$r.Wear) -ForegroundColor Gray
-            }
-        } else {
-            Write-Host 'SMART counters not exposed by this storage controller/driver.' -ForegroundColor DarkYellow
-        }
-    } else {
-        Write-Host 'Could not map OS volume to a disk object for SMART counters.' -ForegroundColor DarkYellow
-    }
-
-    Write-Host ''
-    `$scheduleDeep = Read-Host 'Schedule deep bad-sector check on next reboot? (chkdsk /r) [y/N]'
-    if (`$scheduleDeep -match '^(y|yes)$') {
-        Write-Host 'Scheduling chkdsk /r on next restart...' -ForegroundColor Yellow
-        cmd /c "echo Y|chkdsk $drive /r"
-    }
-
-    Write-Host ''
-    Write-Host 'Disk health checks completed.' -ForegroundColor Green
+    Write-Host 'Scan finished.' -ForegroundColor Green
 } catch {
     Write-Host ('Error: ' + `$_.Exception.Message) -ForegroundColor Red
 }
@@ -279,7 +234,7 @@ Read-Host 'Press Enter to close'
         } catch {
             [System.Windows.Forms.MessageBox]::Show(
                 @"
-Could not start the disk health check:
+Could not start the volume scan:
 
 $($_.Exception.Message)
 
@@ -287,9 +242,8 @@ If you cancelled the UAC prompt, try again and approve it.
 
 Manual (elevated PowerShell):
   Repair-Volume -DriveLetter '$($env:SystemDrive.Substring(0,1))' -Scan
-  chkdsk $($env:SystemDrive) /scan
 "@,
-                'Disk health',
+                'Volume scan',
                 'OK',
                 'Warning'
             )
@@ -324,13 +278,7 @@ Manual (elevated PowerShell):
         $guideBtn.Text = 'Close'
         $guideBtn.Dock = 'Bottom'
         $guideBtn.Height = 34
-        $guideBtn.Add_Click({
-            param($sender, $eventArgs)
-            $hostForm = $sender.FindForm()
-            if ($null -ne $hostForm) {
-                $hostForm.Close()
-            }
-        })
+        $guideBtn.Add_Click({ $guideForm.Close() })
         Set-WinFormsButtonFullText -Button $guideBtn
 
         [void]$guideForm.Controls.Add($guideBtn)
