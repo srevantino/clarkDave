@@ -1,5 +1,10 @@
-module github.com/ChrisTitusTech/WinUtil
+module github.com/ChrisTitusTech/Clark
+
+
 
 go 1.26
 
+
+
 require github.com/imfing/hextra v0.12.1 // indirect
+

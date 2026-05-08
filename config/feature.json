@@ -9,7 +9,7 @@
       "NetFx3"
     ],
     "InvokeScript": [],
-    "link": "https://winutil.christitus.com/dev/features/features/dotnet"
+    "link": "https://clark.christitus.com/dev/features/features/dotnet"
   },
   "WPFFixesNTPPool": {
     "Content": "Configure NTP Server",
@@ -19,7 +19,7 @@
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFFixesNTPPool",
-    "link": "https://winutil.christitus.com/dev/features/fixes/ntppool"
+    "link": "https://clark.christitus.com/dev/features/fixes/ntppool"
   },
   "WPFFeatureshyperv": {
     "Content": "HyperV Virtualization",
@@ -32,7 +32,7 @@
     "InvokeScript": [
       "bcdedit /set hypervisorschedulertype classic"
     ],
-    "link": "https://winutil.christitus.com/dev/features/features/hyperv"
+    "link": "https://clark.christitus.com/dev/features/features/hyperv"
   },
   "WPFFeatureslegacymedia": {
     "Content": "Legacy Media (WMP, DirectPlay)",
@@ -46,7 +46,7 @@
       "LegacyComponents"
     ],
     "InvokeScript": [],
-    "link": "https://winutil.christitus.com/dev/features/features/legacymedia"
+    "link": "https://clark.christitus.com/dev/features/features/legacymedia"
   },
   "WPFFeaturewsl": {
     "Content": "Windows Subsystem for Linux",
@@ -58,7 +58,7 @@
       "Microsoft-Windows-Subsystem-Linux"
     ],
     "InvokeScript": [],
-    "link": "https://winutil.christitus.com/dev/features/features/wsl"
+    "link": "https://clark.christitus.com/dev/features/features/wsl"
   },
   "WPFFeaturenfs": {
     "Content": "NFS - Network File System",
@@ -77,7 +77,7 @@
       "nfsadmin client start",
       "nfsadmin client localhost config fileaccess=755 SecFlavors=+sys -krb5 -krb5i"
     ],
-    "link": "https://winutil.christitus.com/dev/features/features/nfs"
+    "link": "https://clark.christitus.com/dev/features/features/nfs"
   },
   "WPFFeatureRegBackup": {
     "Content": "Enable Daily Registry Backup Task 12.30am",
@@ -94,7 +94,7 @@
       Register-ScheduledTask -Action $action -Trigger $trigger -TaskName 'AutoRegBackup' -Description 'Create System Registry Backups' -User 'System'
       "
     ],
-    "link": "https://winutil.christitus.com/dev/features/features/regbackup"
+    "link": "https://clark.christitus.com/dev/features/features/regbackup"
   },
   "WPFFeatureEnableLegacyRecovery": {
     "Content": "Enable Legacy F8 Boot Recovery",
@@ -105,7 +105,7 @@
     "InvokeScript": [
       "bcdedit /set bootmenupolicy legacy"
     ],
-    "link": "https://winutil.christitus.com/dev/features/features/enablelegacyrecovery"
+    "link": "https://clark.christitus.com/dev/features/features/enablelegacyrecovery"
   },
   "WPFFeatureDisableLegacyRecovery": {
     "Content": "Disable Legacy F8 Boot Recovery",
@@ -116,7 +116,7 @@
     "InvokeScript": [
       "bcdedit /set bootmenupolicy standard"
     ],
-    "link": "https://winutil.christitus.com/dev/features/features/disablelegacyrecovery"
+    "link": "https://clark.christitus.com/dev/features/features/disablelegacyrecovery"
   },
   "WPFFeaturesSandbox": {
     "Content": "Windows Sandbox",
@@ -126,7 +126,7 @@
     "feature": [
       "Containers-DisposableClientVM"
     ],
-    "link": "https://winutil.christitus.com/dev/features/features/sandbox"
+    "link": "https://clark.christitus.com/dev/features/features/sandbox"
   },
   "WPFFeatureInstall": {
     "Content": "Install Features",
@@ -135,7 +135,7 @@
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFFeatureInstall",
-    "link": "https://winutil.christitus.com/dev/features/features/install"
+    "link": "https://clark.christitus.com/dev/features/features/install"
   },
   "WPFPanelAutologin": {
     "Content": "Set Up Autologin",
@@ -144,7 +144,7 @@
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFPanelAutologin",
-    "link": "https://winutil.christitus.com/dev/features/fixes/autologin"
+    "link": "https://clark.christitus.com/dev/features/fixes/autologin"
   },
   "WPFFixesUpdate": {
     "Content": "Reset Windows Update",
@@ -153,7 +153,7 @@
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFFixesUpdate",
-    "link": "https://winutil.christitus.com/dev/features/fixes/update"
+    "link": "https://clark.christitus.com/dev/features/fixes/update"
   },
   "WPFFixesNetwork": {
     "Content": "Reset Network",
@@ -162,7 +162,7 @@
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFFixesNetwork",
-    "link": "https://winutil.christitus.com/dev/features/fixes/network"
+    "link": "https://clark.christitus.com/dev/features/fixes/network"
   },
   "WPFPanelDISM": {
     "Content": "System Corruption Scan",
@@ -171,7 +171,7 @@
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFSystemRepair",
-    "link": "https://winutil.christitus.com/dev/features/fixes/dism"
+    "link": "https://clark.christitus.com/dev/features/fixes/dism"
   },
   "WPFFixesWinget": {
     "Content": "WinGet Reinstall",
@@ -180,7 +180,7 @@
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFFixesWinget",
-    "link": "https://winutil.christitus.com/dev/features/fixes/winget"
+    "link": "https://clark.christitus.com/dev/features/fixes/winget"
   },
   "WPFPanelControl": {
     "Content": "Control Panel",
@@ -191,7 +191,7 @@
     "InvokeScript": [
       "control"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/control"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/control"
   },
   "WPFPanelComputer": {
     "Content": "Computer Management",
@@ -202,7 +202,7 @@
     "InvokeScript": [
       "compmgmt.msc"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/computer"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/computer"
   },
   "WPFPanelNetwork": {
     "Content": "Network Connections",
@@ -213,7 +213,7 @@
     "InvokeScript": [
       "ncpa.cpl"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/network"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/network"
   },
   "WPFPanelPower": {
     "Content": "Power Panel",
@@ -224,7 +224,7 @@
     "InvokeScript": [
       "powercfg.cpl"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/power"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/power"
   },
   "WPFPanelPrinter": {
     "Content": "Printer Panel",
@@ -235,7 +235,7 @@
     "InvokeScript": [
       "Start-Process 'shell:::{A8A91A66-3A7D-4424-8D24-04E180695C7A}'"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/printer"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/printer"
   },
   "WPFPanelRegion": {
     "Content": "Region",
@@ -246,7 +246,7 @@
     "InvokeScript": [
       "intl.cpl"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/region"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/region"
   },
   "WPFPanelRestore": {
     "Content": "Windows Restore",
@@ -257,7 +257,7 @@
     "InvokeScript": [
       "rstrui.exe"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/restore"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/restore"
   },
   "WPFPanelSound": {
     "Content": "Sound Settings",
@@ -268,7 +268,7 @@
     "InvokeScript": [
       "mmsys.cpl"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/sound"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/sound"
   },
   "WPFPanelSystem": {
     "Content": "System Properties",
@@ -279,7 +279,7 @@
     "InvokeScript": [
       "sysdm.cpl"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/system"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/system"
   },
   "WPFPanelTimedate": {
     "Content": "Time and Date",
@@ -290,33 +290,33 @@
     "InvokeScript": [
       "timedate.cpl"
     ],
-    "link": "https://winutil.christitus.com/dev/features/legacy-windows-panels/timedate"
+    "link": "https://clark.christitus.com/dev/features/legacy-windows-panels/timedate"
   },
-  "WPFWinUtilInstallPSProfile": {
+  "WPFClarkInstallPSProfile": {
     "Content": "Install CTT PowerShell Profile",
     "category": "PowerShell 7",
     "panel": "2",
     "Type": "Button",
     "ButtonWidth": "300",
-    "function": "Invoke-WinUtilInstallPSProfile",
-    "link": "https://winutil.christitus.com/dev/features/powershell-profile-powershell-7--only/installpsprofile"
+    "function": "Invoke-ClarkInstallPSProfile",
+    "link": "https://clark.christitus.com/dev/features/powershell-profile-powershell-7--only/installpsprofile"
   },
-  "WPFWinUtilUninstallPSProfile": {
+  "WPFClarkUninstallPSProfile": {
     "Content": "Uninstall CTT PowerShell Profile",
     "category": "PowerShell 7",
     "panel": "2",
     "Type": "Button",
     "ButtonWidth": "300",
-    "function": "Invoke-WinUtilUninstallPSProfile",
-    "link": "https://winutil.christitus.com/dev/features/powershell-profile-powershell-7--only/uninstallpsprofile"
+    "function": "Invoke-ClarkUninstallPSProfile",
+    "link": "https://clark.christitus.com/dev/features/powershell-profile-powershell-7--only/uninstallpsprofile"
   },
-  "WPFWinUtilSSHServer": {
+  "WPFClarkSSHServer": {
     "Content": "Enable OpenSSH Server",
     "category": "Remote",
     "panel": "2",
     "Type": "Button",
     "ButtonWidth": "300",
     "function": "Invoke-WPFSSHServer",
-    "link": "https://winutil.christitus.com/dev/features/remote-access/sshserver"
+    "link": "https://clark.christitus.com/dev/features/remote-access/sshserver"
   }
 }

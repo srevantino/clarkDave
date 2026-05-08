@@ -3,8 +3,12 @@ param (
     [string]$Arguments
 )
 
-if ((Get-Item ".\A-SYS_clark.ps1" -ErrorAction SilentlyContinue).IsReadOnly) {
-    Remove-Item ".\A-SYS_clark.ps1" -Force
+$ErrorActionPreference = "Stop"
+
+$outputScriptPath = Join-Path $PSScriptRoot "A-SYS_clark.ps1"
+
+if ((Get-Item $outputScriptPath -ErrorAction SilentlyContinue).IsReadOnly) {
+    Remove-Item $outputScriptPath -Force
 }
 
 $OFS = "`r`n"
@@ -15,27 +19,83 @@ $workingdir = $PSScriptRoot
 $sync = [Hashtable]::Synchronized(@{})
 $sync.configs = @{}
 
-function Update-Progress {
-    param (
-        [Parameter(Mandatory, position=0)]
-        [string]$StatusMessage,
+function Write-CompileBanner {
+    param([string]$Title)
 
-        [Parameter(Mandatory, position=1)]
+    $line = ('=' * 72)
+    Write-Host $line -ForegroundColor DarkCyan
+    Write-Host (" {0}" -f $Title) -ForegroundColor Cyan
+    Write-Host $line -ForegroundColor DarkCyan
+}
+
+function Write-Stage {
+    param(
+        [Parameter(Mandatory)]
         [ValidateRange(0,100)]
         [int]$Percent,
 
-        [Parameter(position=2)]
-        [string]$Activity = "Compiling"
+        [Parameter(Mandatory)]
+        [string]$StatusMessage
     )
 
-    Write-Progress -Activity $Activity -Status $StatusMessage -PercentComplete $Percent
+    $prefix = "[{0,3}%]" -f $Percent
+    Write-Host "$prefix $StatusMessage" -ForegroundColor Gray
 }
 
-Update-Progress "Pre-req: Running Preprocessor..." 0
+function Write-Check {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Message,
+
+        [Parameter()]
+        [switch]$Pass
+    )
+
+    if ($Pass) {
+        Write-Host ("[OK ] {0}" -f $Message) -ForegroundColor Green
+    } else {
+        Write-Host ("[ERR] {0}" -f $Message) -ForegroundColor Red
+    }
+}
+
+function Assert-PathExists {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Label
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        Write-Check -Message "$Label not found: $Path"
+        throw "$Label missing: $Path"
+    }
+
+    Write-Check -Message "$Label found" -Pass
+}
+
+Write-CompileBanner "Clark Build Compiler"
+Write-Stage -Percent 0 -StatusMessage "Validating prerequisites"
+Assert-PathExists -Path (Join-Path $workingdir "tools") -Label "Tools directory"
+Assert-PathExists -Path (Join-Path $workingdir "functions") -Label "Functions directory"
+Assert-PathExists -Path (Join-Path $workingdir "config") -Label "Config directory"
+Assert-PathExists -Path (Join-Path $workingdir "xaml\inputXML.xaml") -Label "XAML input file"
+Assert-PathExists -Path (Join-Path $workingdir "tools\autounattend.xml") -Label "Autounattend file"
+Assert-PathExists -Path (Join-Path $workingdir "scripts\start.ps1") -Label "Start script"
+Assert-PathExists -Path (Join-Path $workingdir "scripts\main.ps1") -Label "Main script"
+
+Write-Stage -Percent 2 -StatusMessage "Running preprocessor"
 
 # Dot source the 'Invoke-Preprocessing' Function from 'tools/Invoke-Preprocessing.ps1' Script
-$preprocessingFilePath = ".\tools\Invoke-Preprocessing.ps1"
+$preprocessingFilePath = Join-Path $workingdir "tools\Invoke-Preprocessing.ps1"
+Assert-PathExists -Path $preprocessingFilePath -Label "Preprocessor script"
 . $preprocessingFilePath
+if (-not (Get-Command -Name Invoke-Preprocessing -ErrorAction SilentlyContinue)) {
+    Write-Check -Message "Invoke-Preprocessing function not available after dot-sourcing"
+    throw "Failed to import Invoke-Preprocessing"
+}
+Write-Check -Message "Invoke-Preprocessing loaded" -Pass
 
 $excludedFiles = @()
 
@@ -58,21 +118,21 @@ $excludedFiles += @(
 )
 
 $msg = "Pre-req: Code Formatting"
-Invoke-Preprocessing -WorkingDir "$workingdir" -ExcludedFiles $excludedFiles -ProgressStatusMessage $msg
+Invoke-Preprocessing -WorkingDir "$workingdir" -ExcludedFiles @($excludedFiles) -ProgressStatusMessage $msg
 
 # Create the script in memory.
-Update-Progress "Pre-req: Allocating Memory" 0
+Write-Stage -Percent 5 -StatusMessage "Allocating script memory"
 $script_content = [System.Collections.Generic.List[string]]::new()
 
-Update-Progress "Adding: Version" 10
-$script_content.Add($(Get-Content "scripts\start.ps1").replace('#{replaceme}',"$(Get-Date -Format yy.MM.dd)"))
+Write-Stage -Percent 10 -StatusMessage "Adding version header"
+$script_content.Add($(Get-Content (Join-Path $workingdir "scripts\start.ps1")).replace('#{replaceme}',"$(Get-Date -Format yy.MM.dd)"))
 
-Update-Progress "Adding: Functions" 20
-Get-ChildItem "functions" -Recurse -File | ForEach-Object {
+Write-Stage -Percent 20 -StatusMessage "Adding functions"
+Get-ChildItem (Join-Path $workingdir "functions") -Recurse -File | ForEach-Object {
     $script_content.Add($(Get-Content $psitem.FullName))
     }
-Update-Progress "Adding: Config *.json" 40
-Get-ChildItem "config" | Where-Object {$psitem.extension -eq ".json"} | ForEach-Object {
+Write-Stage -Percent 40 -StatusMessage "Adding JSON config"
+Get-ChildItem (Join-Path $workingdir "config") | Where-Object {$psitem.extension -eq ".json"} | ForEach-Object {
     $json = (Get-Content $psitem.FullName -Raw)
     $jsonAsObject = $json | ConvertFrom-Json
 
@@ -97,7 +157,7 @@ $($jsonAsObject | ConvertTo-Json -Depth 3)
 # Read the entire XAML file as a single string, preserving line breaks
 $xaml = Get-Content "$workingdir\xaml\inputXML.xaml" -Raw
 
-Update-Progress "Adding: Xaml " 90
+Write-Stage -Percent 90 -StatusMessage "Adding XAML"
 
 # Add the XAML content to $script_content using a here-string
 $script_content.Add(@"
@@ -106,7 +166,7 @@ $xaml
 '@
 "@)
 
-Update-Progress "Adding: autounattend.xml" 95
+Write-Stage -Percent 95 -StatusMessage "Adding autounattend.xml"
 $autounattendRaw = Get-Content "$workingdir\tools\autounattend.xml" -Raw
 # Strip XML comments (<!-- ... -->, including multi-line)
 $autounattendRaw = [regex]::Replace($autounattendRaw, '<!--.*?-->', '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
@@ -120,28 +180,37 @@ $autounattendXml
 '@
 "@)
 
-$script_content.Add($(Get-Content "scripts\main.ps1"))
+$script_content.Add($(Get-Content (Join-Path $workingdir "scripts\main.ps1")))
 
-Update-Progress "Removing temporary files" 99
+Write-Stage -Percent 99 -StatusMessage "Cleaning temporary files"
 Remove-Item "xaml\inputApp.xaml" -ErrorAction SilentlyContinue
 Remove-Item "xaml\inputTweaks.xaml" -ErrorAction SilentlyContinue
 Remove-Item "xaml\inputFeatures.xaml" -ErrorAction SilentlyContinue
 
-Set-Content -Path "$scriptname" -Value ($script_content -join "`r`n") -Encoding ascii
-Write-Progress -Activity "Compiling" -Completed
+Set-Content -Path $outputScriptPath -Value ($script_content -join "`r`n") -Encoding ascii
+Write-Check -Message "Compiled script written: $scriptname" -Pass
 
-Update-Progress -Activity "Validating" -StatusMessage "Checking $scriptname Syntax" -Percent 0
+Write-Stage -Percent 100 -StatusMessage "Validating PowerShell syntax"
 try {
-    Get-Command -Syntax ".\$scriptname" | Out-Null
+    $tokens = $null
+    $parseErrors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile($outputScriptPath, [ref]$tokens, [ref]$parseErrors) | Out-Null
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+        throw ($parseErrors | ForEach-Object { $_.Message } | Select-Object -First 1)
+    }
+    Write-Check -Message "Syntax validation passed for $scriptname" -Pass
 } catch {
-    Write-Warning "Syntax Validation for '$scriptname' has failed"
-    Write-Host "$($Error[0])" -ForegroundColor Red
+    Write-Check -Message "Syntax validation failed for $scriptname"
+    Write-Host "$($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
-Write-Progress -Activity "Validating" -Completed
+
+Write-Host ""
+Write-Host "Build complete." -ForegroundColor Cyan
 
 if ($run) {
+    Write-Host "Launching $scriptname..." -ForegroundColor Cyan
     Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-    & ".\$scriptname" $Arguments
+    & $outputScriptPath $Arguments
     break
 }
