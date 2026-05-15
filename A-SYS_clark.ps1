@@ -6,7 +6,7 @@
 
     Organization   : Advance Systems 4042 (developed & managed)
 
-    Version        : 26.05.06
+    Version        : 26.05.16
 
 #>
 
@@ -219,7 +219,7 @@ if (Test-Path -LiteralPath (Join-Path $resolvedScriptRoot "config")) {
 
 $sync.PSScriptRoot = if ($repoRoot) { $repoRoot } else { $resolvedScriptRoot }
 
-$sync.version = "26.05.06"
+$sync.version = "26.05.16"
 
 $sync.configs = @{}
 
@@ -4409,13 +4409,14 @@ function Invoke-ClarkInstallPSProfile {
 
 }
 
+# ISO Creator supports Windows 10 and Windows 11; paths use WinISO (legacy identifiers still say Win11ISO in code/UI).
 function Get-Win11ISOLogFilePath {
     if (-not $sync["Win11ISOGlobalLogPath"]) {
-        $logDir = Join-Path $env:TEMP "ASYS_Win11ISO_Logs"
+        $logDir = Join-Path $env:TEMP "ASYS_WinISO_Logs"
         if (-not (Test-Path $logDir)) {
             New-Item -Path $logDir -ItemType Directory -Force | Out-Null
         }
-        $sync["Win11ISOGlobalLogPath"] = Join-Path $logDir ("ASYS_Win11ISO_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+        $sync["Win11ISOGlobalLogPath"] = Join-Path $logDir ("ASYS_WinISO_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
     }
 
     return $sync["Win11ISOGlobalLogPath"]
@@ -4434,7 +4435,7 @@ function Write-Win11ISOLogCore {
 
     try {
         $logPath = Get-Win11ISOLogFilePath
-        Add-Content -LiteralPath $logPath -Value $Line -ErrorAction SilentlyContinue
+        Add-Content -LiteralPath $logPath -Value $Line -Encoding utf8 -ErrorAction SilentlyContinue
     } catch {}
 
     if ($PARAM_NOUI) {
@@ -5906,19 +5907,22 @@ function Invoke-ClarkISOModify {
         Save-Profiles -Usernames $savedUsernames -Default $defaultUsername
         Write-Win11ISOLog "Username saved to Clark config: $mainUsername (default: $defaultUsername)"
     }
-    Write-Win11ISOLog "Build config ??? Username: $mainUsername | Computer: $computerName | Drivers: $injectDriversDialog"
+    Write-Win11ISOLog "Build config - Username: $mainUsername | Computer: $computerName | Drivers: $injectDriversDialog"
 
     $sync["WPFWin11ISOModifyButton"].IsEnabled = $false
     $sync["Win11ISOModifying"] = $true
 
-    $existingWorkDir = Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue |
-        Where-Object { $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $isoWorkDirCandidates = @()
+    $isoWorkDirCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_WinISO*") -ErrorAction SilentlyContinue
+    $isoWorkDirCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue
+    $existingWorkDir = $isoWorkDirCandidates |
+        Where-Object { $_ -and $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
     $workDir = if ($existingWorkDir) {
         Write-Win11ISOLog "Reusing existing temp directory: $($existingWorkDir.FullName)"
         $existingWorkDir.FullName
     } else {
-        Join-Path $env:TEMP "ASYS_Win11ISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        Join-Path $env:TEMP "ASYS_WinISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
     }
 
     $pathCandidates = @(
@@ -6018,7 +6022,7 @@ function Invoke-ClarkISOModify {
             $ts = (Get-Date).ToString("HH:mm:ss")
             $line = "[$ts] $msg"
             Write-Win11ISOLogCore -Line $line
-            Add-Content -Path (Join-Path $workDir "ASYS_Win11ISO.log") -Value $line -ErrorAction SilentlyContinue
+            Add-Content -Path (Join-Path $workDir "ASYS_WinISO.log") -Value $line -Encoding utf8 -ErrorAction SilentlyContinue
         }
 
         function SetProgress($label, $pct) {
@@ -6092,7 +6096,7 @@ function Invoke-ClarkISOModify {
             # Match only exact target editions: Home, Home Single Language, Pro
             $targetWimEditions = @($allWimEditions | Where-Object { $_.ImageName -match "\bHome Single Language\b|\bHome$|\bPro$" } | Sort-Object ImageIndex)
             if ($targetWimEditions.Count -eq 0) {
-                Log "Warning: no Home/Pro editions found ??? processing all editions."
+                Log "Warning: no Home/Pro editions found - processing all editions."
                 $targetWimEditions = $allWimEditions | Sort-Object ImageIndex
             }
             $editionCount = $targetWimEditions.Count
@@ -6180,10 +6184,10 @@ function Invoke-ClarkISOModify {
                     Copy-Item -Path $oemFolderSource -Destination $oemFolderDest -Recurse -Force
                     Log "OEM folder injected: $oemFolderSource -> $oemFolderDest"
                 } else {
-                    Log "Warning: tools\`$OEM`$ folder not found at '$oemFolderSource' ??? skipping OEM injection."
+                    Log "Warning: tools\`$OEM`$ folder not found at '$oemFolderSource' - skipping OEM injection."
                 }
             } else {
-                Log "Windows Only mode selected ??? skipping OEM injection. No setup scripts will be included."
+                Log "Windows Only mode selected - skipping OEM injection. No setup scripts will be included."
             }
 
 
@@ -6280,8 +6284,11 @@ function Invoke-ClarkISOCheckExistingWork {
         return
     }
 
-    $existingWorkDir = Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue |
-        Where-Object { $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $resumeIsoCandidates = @()
+    $resumeIsoCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_WinISO*") -ErrorAction SilentlyContinue
+    $resumeIsoCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue
+    $existingWorkDir = $resumeIsoCandidates |
+        Where-Object { $_ -and $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
     if (-not $existingWorkDir) { return }
 
@@ -6341,7 +6348,7 @@ function Invoke-ClarkISOCleanAndReset {
             $line = "[$ts] $msg"
             Write-Win11ISOLogCore -Line $line
             if ($workDir) {
-                Add-Content -Path (Join-Path $workDir "ASYS_Win11ISO.log") -Value $line -ErrorAction SilentlyContinue
+                Add-Content -Path (Join-Path $workDir "ASYS_WinISO.log") -Value $line -Encoding utf8 -ErrorAction SilentlyContinue
             }
         }
 
@@ -19262,7 +19269,7 @@ $sync.configs.feature = @'
 
                                             ],
                                 "InvokeScript":  [
-                                                     "\r\r\n      New-ItemProperty -Path \u0027HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Configuration Manager\u0027 -Name \u0027EnablePeriodicBackup\u0027 -Type DWord -Value 1 -Force\r\r\n      New-ItemProperty -Path \u0027HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Configuration Manager\u0027 -Name \u0027BackupCount\u0027 -Type DWord -Value 2 -Force\r\r\n      $action = New-ScheduledTaskAction -Execute \u0027schtasks\u0027 -Argument \u0027/run /i /tn \"\\Microsoft\\Windows\\Registry\\RegIdleBackup\"\u0027\r\r\n      $trigger = New-ScheduledTaskTrigger -Daily -At 00:30\r\r\n      Register-ScheduledTask -Action $action -Trigger $trigger -TaskName \u0027AutoRegBackup\u0027 -Description \u0027Create System Registry Backups\u0027 -User \u0027System\u0027\r\r\n      "
+                                                     "\r\n      New-ItemProperty -Path \u0027HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Configuration Manager\u0027 -Name \u0027EnablePeriodicBackup\u0027 -Type DWord -Value 1 -Force\r\n      New-ItemProperty -Path \u0027HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Configuration Manager\u0027 -Name \u0027BackupCount\u0027 -Type DWord -Value 2 -Force\r\n      $action = New-ScheduledTaskAction -Execute \u0027schtasks\u0027 -Argument \u0027/run /i /tn \"\\Microsoft\\Windows\\Registry\\RegIdleBackup\"\u0027\r\n      $trigger = New-ScheduledTaskTrigger -Daily -At 00:30\r\n      Register-ScheduledTask -Action $action -Trigger $trigger -TaskName \u0027AutoRegBackup\u0027 -Description \u0027Create System Registry Backups\u0027 -User \u0027System\u0027\r\n      "
                                                  ],
                                 "link":  "https://clark.christitus.com/dev/features/features/regbackup"
                             },
@@ -19880,10 +19887,10 @@ $sync.configs.tweaks = @'
                             "category":  "Essential",
                             "panel":  "1",
                             "InvokeScript":  [
-                                                 "\r\r\n      # Sometimes if you dont stop the Widgets process the removal may fail\r\r\n\r\r\n      Get-Process *Widget* | Stop-Process\r\r\n      Get-AppxPackage Microsoft.WidgetsPlatformRuntime -AllUsers | Remove-AppxPackage -AllUsers\r\r\n      Get-AppxPackage MicrosoftWindows.Client.WebExperience -AllUsers | Remove-AppxPackage -AllUsers\r\r\n\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      Write-Host \"Removed widgets\"\r\r\n      "
+                                                 "\r\n      # Sometimes if you dont stop the Widgets process the removal may fail\r\n\r\n      Get-Process *Widget* | Stop-Process\r\n      Get-AppxPackage Microsoft.WidgetsPlatformRuntime -AllUsers | Remove-AppxPackage -AllUsers\r\n      Get-AppxPackage MicrosoftWindows.Client.WebExperience -AllUsers | Remove-AppxPackage -AllUsers\r\n\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      Write-Host \"Removed widgets\"\r\n      "
                                              ],
                             "UndoScript":  [
-                                               "\r\r\n      Write-Host \"Restoring widgets AppxPackages\"\r\r\n\r\r\n      Add-AppxPackage -Register \"C:\\Program Files\\WindowsApps\\Microsoft.WidgetsPlatformRuntime*\\AppxManifest.xml\" -DisableDevelopmentMode\r\r\n      Add-AppxPackage -Register \"C:\\Program Files\\WindowsApps\\MicrosoftWindows.Client.WebExperience*\\AppxManifest.xml\" -DisableDevelopmentMode\r\r\n\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                               "\r\n      Write-Host \"Restoring widgets AppxPackages\"\r\n\r\n      Add-AppxPackage -Register \"C:\\Program Files\\WindowsApps\\Microsoft.WidgetsPlatformRuntime*\\AppxManifest.xml\" -DisableDevelopmentMode\r\n      Add-AppxPackage -Register \"C:\\Program Files\\WindowsApps\\MicrosoftWindows.Client.WebExperience*\\AppxManifest.xml\" -DisableDevelopmentMode\r\n\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                            ],
                             "link":  "https://clark.christitus.com/dev/tweaks/essential-tweaks/widget"
                         },
@@ -19893,10 +19900,10 @@ $sync.configs.tweaks = @'
                                      "category":  "Essential",
                                      "panel":  "1",
                                      "InvokeScript":  [
-                                                          "\r\r\n      Invoke-WebRequest https://github.com/thebookisclosed/ViVe/releases/download/v0.3.4/ViVeTool-v0.3.4-IntelAmd.zip -OutFile ViVeTool.zip\r\r\n\r\r\n      Expand-Archive ViVeTool.zip\r\r\n      Remove-Item ViVeTool.zip\r\r\n\r\r\n      Start-Process \u0027ViVeTool\\ViVeTool.exe\u0027 -ArgumentList \u0027/disable /id:47205210\u0027 -Wait -NoNewWindow\r\r\n\r\r\n      Remove-Item ViVeTool -Recurse\r\r\n\r\r\n      Write-Host \u0027Old start menu reverted. Please restart your computer to take effect.\u0027\r\r\n      "
+                                                          "\r\n      Invoke-WebRequest https://github.com/thebookisclosed/ViVe/releases/download/v0.3.4/ViVeTool-v0.3.4-IntelAmd.zip -OutFile ViVeTool.zip\r\n\r\n      Expand-Archive ViVeTool.zip\r\n      Remove-Item ViVeTool.zip\r\n\r\n      Start-Process \u0027ViVeTool\\ViVeTool.exe\u0027 -ArgumentList \u0027/disable /id:47205210\u0027 -Wait -NoNewWindow\r\n\r\n      Remove-Item ViVeTool -Recurse\r\n\r\n      Write-Host \u0027Old start menu reverted. Please restart your computer to take effect.\u0027\r\n      "
                                                       ],
                                      "UndoScript":  [
-                                                        "\r\r\n      Invoke-WebRequest https://github.com/thebookisclosed/ViVe/releases/download/v0.3.4/ViVeTool-v0.3.4-IntelAmd.zip -OutFile ViVeTool.zip\r\r\n\r\r\n      Expand-Archive ViVeTool.zip\r\r\n      Remove-Item ViVeTool.zip\r\r\n\r\r\n      Start-Process \u0027ViVeTool\\ViVeTool.exe\u0027 -ArgumentList \u0027/enable /id:47205210\u0027 -Wait -NoNewWindow\r\r\n\r\r\n      Remove-Item ViVeTool -Recurse\r\r\n\r\r\n      Write-Host \u0027New start menu reverted. Please restart your computer to take effect.\u0027\r\r\n      "
+                                                        "\r\n      Invoke-WebRequest https://github.com/thebookisclosed/ViVe/releases/download/v0.3.4/ViVeTool-v0.3.4-IntelAmd.zip -OutFile ViVeTool.zip\r\n\r\n      Expand-Archive ViVeTool.zip\r\n      Remove-Item ViVeTool.zip\r\n\r\n      Start-Process \u0027ViVeTool\\ViVeTool.exe\u0027 -ArgumentList \u0027/enable /id:47205210\u0027 -Wait -NoNewWindow\r\n\r\n      Remove-Item ViVeTool -Recurse\r\n\r\n      Write-Host \u0027New start menu reverted. Please restart your computer to take effect.\u0027\r\n      "
                                                     ],
                                      "link":  "https://clark.christitus.com/dev/tweaks/essential-tweaks/revertstartmenu"
                                  },
@@ -21194,10 +21201,10 @@ $sync.configs.tweaks = @'
                                                 }
                                             ],
                                "InvokeScript":  [
-                                                    "\r\r\n      # Disable Defender Auto Sample Submission\r\r\n      Set-MpPreference -SubmitSamplesConsent 2\r\r\n\r\r\n      # Disable (Connected User Experiences and Telemetry) Service\r\r\n      Set-Service -Name diagtrack -StartupType Disabled\r\r\n\r\r\n      # Disable (Windows Error Reporting Manager) Service\r\r\n      Set-Service -Name wermgr -StartupType Disabled\r\r\n\r\r\n      $Memory = (Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1KB\r\r\n      Set-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Control\" -Name SvcHostSplitThresholdInKB -Value $Memory\r\r\n\r\r\n      Remove-ItemProperty -Path \"HKCU:\\Software\\Microsoft\\Siuf\\Rules\" -Name PeriodInNanoSeconds\r\r\n      "
+                                                    "\r\n      # Disable Defender Auto Sample Submission\r\n      Set-MpPreference -SubmitSamplesConsent 2\r\n\r\n      # Disable (Connected User Experiences and Telemetry) Service\r\n      Set-Service -Name diagtrack -StartupType Disabled\r\n\r\n      # Disable (Windows Error Reporting Manager) Service\r\n      Set-Service -Name wermgr -StartupType Disabled\r\n\r\n      $Memory = (Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1KB\r\n      Set-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Control\" -Name SvcHostSplitThresholdInKB -Value $Memory\r\n\r\n      Remove-ItemProperty -Path \"HKCU:\\Software\\Microsoft\\Siuf\\Rules\" -Name PeriodInNanoSeconds\r\n      "
                                                 ],
                                "UndoScript":  [
-                                                  "\r\r\n      # Enable Defender Auto Sample Submission\r\r\n      Set-MpPreference -SubmitSamplesConsent 1\r\r\n\r\r\n      # Enable (Connected User Experiences and Telemetry) Service\r\r\n      Set-Service -Name diagtrack -StartupType Automatic\r\r\n\r\r\n      # Enable (Windows Error Reporting Manager) Service\r\r\n      Set-Service -Name wermgr -StartupType Automatic\r\r\n      "
+                                                  "\r\n      # Enable Defender Auto Sample Submission\r\n      Set-MpPreference -SubmitSamplesConsent 1\r\n\r\n      # Enable (Connected User Experiences and Telemetry) Service\r\n      Set-Service -Name diagtrack -StartupType Automatic\r\n\r\n      # Enable (Windows Error Reporting Manager) Service\r\n      Set-Service -Name wermgr -StartupType Automatic\r\n      "
                                               ],
                                "link":  "https://clark.christitus.com/dev/tweaks/essential-tweaks/telemetry"
                            },
@@ -21210,7 +21217,7 @@ $sync.configs.tweaks = @'
                                                      "Invoke-ClarkRemoveEdge"
                                                  ],
                                 "UndoScript":  [
-                                                   "\r\r\n      Write-Host \u0027Installing Microsoft Edge...\u0027\r\r\n      winget install Microsoft.Edge --source winget\r\r\n      "
+                                                   "\r\n      Write-Host \u0027Installing Microsoft Edge...\u0027\r\n      winget install Microsoft.Edge --source winget\r\n      "
                                                ],
                                 "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/removeedge"
                             },
@@ -21236,10 +21243,10 @@ $sync.configs.tweaks = @'
                                     "category":  "z__Advanced",
                                     "panel":  "1",
                                     "InvokeScript":  [
-                                                         "\r\r\n      # Deny permission to remove OneDrive folder\r\r\n      icacls $Env:OneDrive /deny \"Administrators:(D,DC)\"\r\r\n\r\r\n      Write-Host \"Uninstalling OneDrive...\"\r\r\n      Start-Process \u0027C:\\Windows\\System32\\OneDriveSetup.exe\u0027 -ArgumentList \u0027/uninstall\u0027 -Wait\r\r\n\r\r\n      # Some of OneDrive files use explorer, and OneDrive uses FileCoAuth\r\r\n      Write-Host \"Removing leftover OneDrive Files...\"\r\r\n      Stop-Process -Name FileCoAuth,Explorer\r\r\n      Remove-Item \"$Env:LocalAppData\\Microsoft\\OneDrive\" -Recurse -Force\r\r\n      Remove-Item \"C:\\ProgramData\\Microsoft OneDrive\" -Recurse -Force\r\r\n\r\r\n      # Grant back permission to access OneDrive folder\r\r\n      icacls $Env:OneDrive /grant \"Administrators:(D,DC)\"\r\r\n\r\r\n      # Disable OneSyncSvc\r\r\n      Set-Service -Name OneSyncSvc -StartupType Disabled\r\r\n      "
+                                                         "\r\n      # Deny permission to remove OneDrive folder\r\n      icacls $Env:OneDrive /deny \"Administrators:(D,DC)\"\r\n\r\n      Write-Host \"Uninstalling OneDrive...\"\r\n      Start-Process \u0027C:\\Windows\\System32\\OneDriveSetup.exe\u0027 -ArgumentList \u0027/uninstall\u0027 -Wait\r\n\r\n      # Some of OneDrive files use explorer, and OneDrive uses FileCoAuth\r\n      Write-Host \"Removing leftover OneDrive Files...\"\r\n      Stop-Process -Name FileCoAuth,Explorer\r\n      Remove-Item \"$Env:LocalAppData\\Microsoft\\OneDrive\" -Recurse -Force\r\n      Remove-Item \"C:\\ProgramData\\Microsoft OneDrive\" -Recurse -Force\r\n\r\n      # Grant back permission to access OneDrive folder\r\n      icacls $Env:OneDrive /grant \"Administrators:(D,DC)\"\r\n\r\n      # Disable OneSyncSvc\r\n      Set-Service -Name OneSyncSvc -StartupType Disabled\r\n      "
                                                      ],
                                     "UndoScript":  [
-                                                       "\r\r\n      Write-Host \"Installing OneDrive\"\r\r\n      winget install Microsoft.Onedrive --source winget\r\r\n\r\r\n      # Enabled OneSyncSvc\r\r\n      Set-Service -Name OneSyncSvc -StartupType Automatic\r\r\n      "
+                                                       "\r\n      Write-Host \"Installing OneDrive\"\r\n      winget install Microsoft.Onedrive --source winget\r\n\r\n      # Enabled OneSyncSvc\r\n      Set-Service -Name OneSyncSvc -StartupType Automatic\r\n      "
                                                    ],
                                     "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/removeonedrive"
                                 },
@@ -21249,10 +21256,10 @@ $sync.configs.tweaks = @'
                                 "category":  "z__Advanced",
                                 "panel":  "1",
                                 "InvokeScript":  [
-                                                     "\r\r\n      Remove-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}\"\r\r\n      Set-ItemProperty -Path \"HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" -Name LaunchTo -Value 1\r\r\n      "
+                                                     "\r\n      Remove-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}\"\r\n      Set-ItemProperty -Path \"HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" -Name LaunchTo -Value 1\r\n      "
                                                  ],
                                 "UndoScript":  [
-                                                   "\r\r\n      New-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}\"\r\r\n      Set-ItemProperty -Path \"HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" -Name LaunchTo -Value 0\r\r\n      "
+                                                   "\r\n      New-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}\"\r\n      Set-ItemProperty -Path \"HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\" -Name LaunchTo -Value 0\r\n      "
                                                ],
                                 "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/removehome"
                             },
@@ -21262,10 +21269,10 @@ $sync.configs.tweaks = @'
                                    "category":  "z__Advanced",
                                    "panel":  "1",
                                    "InvokeScript":  [
-                                                        "\r\r\n      Remove-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}\"\r\r\n      "
+                                                        "\r\n      Remove-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}\"\r\n      "
                                                     ],
                                    "UndoScript":  [
-                                                      "\r\r\n      New-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}\"\r\r\n      "
+                                                      "\r\n      New-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}\"\r\n      "
                                                   ],
                                    "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/removegallery"
                                },
@@ -21418,7 +21425,7 @@ $sync.configs.tweaks = @'
                                           "MSTeams"
                                       ],
                              "InvokeScript":  [
-                                                  "\r\r\n      $TeamsPath = \"$Env:LocalAppData\\Microsoft\\Teams\\Update.exe\"\r\r\n\r\r\n      if (Test-Path $TeamsPath) {\r\r\n        Write-Host \"Uninstalling Teams\"\r\r\n        Start-Process $TeamsPath -ArgumentList -uninstall -wait\r\r\n\r\r\n        Write-Host \"Deleting Teams directory\"\r\r\n        Remove-Item $TeamsPath -Recurse -Force\r\r\n      }\r\r\n      "
+                                                  "\r\n      $TeamsPath = \"$Env:LocalAppData\\Microsoft\\Teams\\Update.exe\"\r\n\r\n      if (Test-Path $TeamsPath) {\r\n        Write-Host \"Uninstalling Teams\"\r\n        Start-Process $TeamsPath -ArgumentList -uninstall -wait\r\n\r\n        Write-Host \"Deleting Teams directory\"\r\n        Remove-Item $TeamsPath -Recurse -Force\r\n      }\r\n      "
                                               ],
                              "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/debloat"
                          },
@@ -21438,7 +21445,7 @@ $sync.configs.tweaks = @'
                                                    }
                                                ],
                                   "InvokeScript":  [
-                                                       "\r\r\n      if (-not (Get-ComputerRestorePoint)) {\r\r\n          Enable-ComputerRestore -Drive $Env:SystemDrive\r\r\n      }\r\r\n\r\r\n      Checkpoint-Computer -Description \"System Restore Point created by A-SYS_clark (Advance Systems 4042)\" -RestorePointType MODIFY_SETTINGS\r\r\n      Write-Host \"System Restore Point Created Successfully\" -ForegroundColor Green\r\r\n      "
+                                                       "\r\n      if (-not (Get-ComputerRestorePoint)) {\r\n          Enable-ComputerRestore -Drive $Env:SystemDrive\r\n      }\r\n\r\n      Checkpoint-Computer -Description \"System Restore Point created by A-SYS_clark (Advance Systems 4042)\" -RestorePointType MODIFY_SETTINGS\r\n      Write-Host \"System Restore Point Created Successfully\" -ForegroundColor Green\r\n      "
                                                    ],
                                   "link":  "https://clark.christitus.com/dev/tweaks/essential-tweaks/restorepoint"
                               },
@@ -21493,10 +21500,10 @@ $sync.configs.tweaks = @'
                                    "category":  "z__Advanced",
                                    "panel":  "1",
                                    "InvokeScript":  [
-                                                        "\r\r\n      Get-AppxPackage -AllUsers *Copilot* | Remove-AppxPackage -AllUsers\r\r\n      Get-AppxPackage -AllUsers Microsoft.MicrosoftOfficeHub | Remove-AppxPackage -AllUsers\r\r\n\r\r\n      $Appx = (Get-AppxPackage MicrosoftWindows.Client.CoreAI).PackageFullName\r\r\n      $Sid = (Get-LocalUser $Env:UserName).Sid.Value\r\r\n\r\r\n      New-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\EndOfLife\\$Sid\\$Appx\" -Force\r\r\n      Remove-AppxPackage $Appx\r\r\n\r\r\n      Write-Host \"Copilot Removed\"\r\r\n      "
+                                                        "\r\n      Get-AppxPackage -AllUsers *Copilot* | Remove-AppxPackage -AllUsers\r\n      Get-AppxPackage -AllUsers Microsoft.MicrosoftOfficeHub | Remove-AppxPackage -AllUsers\r\n\r\n      $Appx = (Get-AppxPackage MicrosoftWindows.Client.CoreAI).PackageFullName\r\n      $Sid = (Get-LocalUser $Env:UserName).Sid.Value\r\n\r\n      New-Item \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Appx\\AppxAllUserStore\\EndOfLife\\$Sid\\$Appx\" -Force\r\n      Remove-AppxPackage $Appx\r\n\r\n      Write-Host \"Copilot Removed\"\r\n      "
                                                     ],
                                    "UndoScript":  [
-                                                      "\r\r\n      Write-Host \"Installing Copilot...\"\r\r\n      winget install --name Copilot --source msstore --accept-package-agreements --accept-source-agreements --silent\r\r\n      "
+                                                      "\r\n      Write-Host \"Installing Copilot...\"\r\n      winget install --name Copilot --source msstore --accept-package-agreements --accept-source-agreements --silent\r\n      "
                                                   ],
                                    "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/removecopilot"
                                },
@@ -21538,10 +21545,10 @@ $sync.configs.tweaks = @'
                                                  }
                                              ],
                                 "InvokeScript":  [
-                                                     "\r\r\n      $RazerPath = \"C:\\Windows\\Installer\\Razer\"\r\r\n\r\r\n      if (Test-Path $RazerPath) {\r\r\n        Remove-Item $RazerPath\\* -Recurse -Force\r\r\n      } else {\r\r\n        New-Item -Path $RazerPath -ItemType Directory\r\r\n      }\r\r\n\r\r\n      icacls $RazerPath /deny \"Everyone:(W)\"\r\r\n      "
+                                                     "\r\n      $RazerPath = \"C:\\Windows\\Installer\\Razer\"\r\n\r\n      if (Test-Path $RazerPath) {\r\n        Remove-Item $RazerPath\\* -Recurse -Force\r\n      } else {\r\n        New-Item -Path $RazerPath -ItemType Directory\r\n      }\r\n\r\n      icacls $RazerPath /deny \"Everyone:(W)\"\r\n      "
                                                  ],
                                 "UndoScript":  [
-                                                   "\r\r\n      icacls \"C:\\Windows\\Installer\\Razer\" /remove:d Everyone\r\r\n      "
+                                                   "\r\n      icacls \"C:\\Windows\\Installer\\Razer\" /remove:d Everyone\r\n      "
                                                ],
                                 "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/razerblock"
                             },
@@ -21574,10 +21581,10 @@ $sync.configs.tweaks = @'
                                    "category":  "z__Advanced",
                                    "panel":  "1",
                                    "InvokeScript":  [
-                                                        "\r\r\n      $hostsUrl = \"https://github.com/Ruddernation-Designs/Adobe-URL-Block-List/raw/refs/heads/master/hosts\"\r\r\n      $hosts = \"$Env:SystemRoot\\System32\\drivers\\etc\\hosts\"\r\r\n\r\r\n      Move-Item $hosts \"$hosts.bak\"\r\r\n      Invoke-WebRequest $hostsUrl -OutFile $hosts\r\r\n      ipconfig /flushdns\r\r\n\r\r\n      Write-Host \"Added Adobe url block list from host file\"\r\r\n      "
+                                                        "\r\n      $hostsUrl = \"https://github.com/Ruddernation-Designs/Adobe-URL-Block-List/raw/refs/heads/master/hosts\"\r\n      $hosts = \"$Env:SystemRoot\\System32\\drivers\\etc\\hosts\"\r\n\r\n      Move-Item $hosts \"$hosts.bak\"\r\n      Invoke-WebRequest $hostsUrl -OutFile $hosts\r\n      ipconfig /flushdns\r\n\r\n      Write-Host \"Added Adobe url block list from host file\"\r\n      "
                                                     ],
                                    "UndoScript":  [
-                                                      "\r\r\n      $hosts = \"$Env:SystemRoot\\System32\\drivers\\etc\\hosts\"\r\r\n\r\r\n      Remove-Item $hosts\r\r\n      Move-Item \"$hosts.bak\" $hosts\r\r\n      ipconfig /flushdns\r\r\n\r\r\n      Write-Host \"Removed Adobe url block list from host file\"\r\r\n      "
+                                                      "\r\n      $hosts = \"$Env:SystemRoot\\System32\\drivers\\etc\\hosts\"\r\n\r\n      Remove-Item $hosts\r\n      Move-Item \"$hosts.bak\" $hosts\r\n      ipconfig /flushdns\r\n\r\n      Write-Host \"Removed Adobe url block list from host file\"\r\n      "
                                                   ],
                                    "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/blockadobenet"
                                },
@@ -21587,10 +21594,10 @@ $sync.configs.tweaks = @'
                                     "category":  "z__Advanced",
                                     "panel":  "1",
                                     "InvokeScript":  [
-                                                         "\r\r\n      New-Item -Path \"HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\" -Name \"InprocServer32\" -force -value \"\"\r\r\n      Write-Host Restarting explorer.exe ...\r\r\n      Stop-Process -Name \"explorer\" -Force\r\r\n      "
+                                                         "\r\n      New-Item -Path \"HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\" -Name \"InprocServer32\" -force -value \"\"\r\n      Write-Host Restarting explorer.exe ...\r\n      Stop-Process -Name \"explorer\" -Force\r\n      "
                                                      ],
                                     "UndoScript":  [
-                                                       "\r\r\n      Remove-Item -Path \"HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\" -Recurse -Confirm:$false -Force\r\r\n      # Restarting Explorer in the Undo Script might not be necessary, as the Registry change without restarting Explorer does work, but just to make sure.\r\r\n      Write-Host Restarting explorer.exe ...\r\r\n      Stop-Process -Name \"explorer\" -Force\r\r\n      "
+                                                       "\r\n      Remove-Item -Path \"HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\" -Recurse -Confirm:$false -Force\r\n      # Restarting Explorer in the Undo Script might not be necessary, as the Registry change without restarting Explorer does work, but just to make sure.\r\n      Write-Host Restarting explorer.exe ...\r\n      Stop-Process -Name \"explorer\" -Force\r\n      "
                                                    ],
                                     "link":  "https://clark.christitus.com/dev/tweaks/z--advanced-tweaks---caution/rightclickmenu"
                                 },
@@ -21600,7 +21607,7 @@ $sync.configs.tweaks = @'
                                  "category":  "Essential",
                                  "panel":  "1",
                                  "InvokeScript":  [
-                                                      "\r\r\n      cleanmgr.exe /d C: /VERYLOWDISK\r\r\n      Dism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase\r\r\n      "
+                                                      "\r\n      cleanmgr.exe /d C: /VERYLOWDISK\r\n      Dism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase\r\n      "
                                                   ],
                                  "link":  "https://clark.christitus.com/dev/tweaks/essential-tweaks/diskcleanup"
                              },
@@ -21610,7 +21617,7 @@ $sync.configs.tweaks = @'
                                      "category":  "Essential",
                                      "panel":  "1",
                                      "InvokeScript":  [
-                                                          "\r\r\n      Remove-Item -Path \"$Env:Temp\\*\" -Recurse -Force\r\r\n      Remove-Item -Path \"$Env:SystemRoot\\Temp\\*\" -Recurse -Force\r\r\n      "
+                                                          "\r\n      Remove-Item -Path \"$Env:Temp\\*\" -Recurse -Force\r\n      Remove-Item -Path \"$Env:SystemRoot\\Temp\\*\" -Recurse -Force\r\n      "
                                                       ],
                                      "link":  "https://clark.christitus.com/dev/tweaks/essential-tweaks/deletetempfiles"
                                  },
@@ -21731,10 +21738,10 @@ $sync.configs.tweaks = @'
                                                }
                                            ],
                               "InvokeScript":  [
-                                                   "\r\r\n      Invoke-ClarkExplorerUpdate\r\r\n      if ($sync.ThemeButton.Content -eq [char]0xF08C) {\r\r\n        Invoke-ClarkThemeChange -theme \"Auto\"\r\r\n      }\r\r\n      "
+                                                   "\r\n      Invoke-ClarkExplorerUpdate\r\n      if ($sync.ThemeButton.Content -eq [char]0xF08C) {\r\n        Invoke-ClarkThemeChange -theme \"Auto\"\r\n      }\r\n      "
                                                ],
                               "UndoScript":  [
-                                                 "\r\r\n      Invoke-ClarkExplorerUpdate\r\r\n      if ($sync.ThemeButton.Content -eq [char]0xF08C) {\r\r\n        Invoke-ClarkThemeChange -theme \"Auto\"\r\r\n      }\r\r\n      "
+                                                 "\r\n      Invoke-ClarkExplorerUpdate\r\n      if ($sync.ThemeButton.Content -eq [char]0xF08C) {\r\n        Invoke-ClarkThemeChange -theme \"Auto\"\r\n      }\r\n      "
                                              ],
                               "link":  "https://clark.christitus.com/dev/tweaks/customize-preferences/darkmode"
                           },
@@ -21851,10 +21858,10 @@ $sync.configs.tweaks = @'
                                                                }
                                                            ],
                                               "InvokeScript":  [
-                                                                   "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                                   "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                                                ],
                                               "UndoScript":  [
-                                                                 "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                                 "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                                              ],
                                               "link":  "https://clark.christitus.com/dev/tweaks/customize-preferences/startmenurecommendations"
                                           },
@@ -22005,10 +22012,10 @@ $sync.configs.tweaks = @'
                                                   }
                                               ],
                                  "InvokeScript":  [
-                                                      "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                      "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                                   ],
                                  "UndoScript":  [
-                                                    "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                    "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                                 ],
                                  "link":  "https://clark.christitus.com/dev/tweaks/customize-preferences/hiddenfiles"
                              },
@@ -22029,10 +22036,10 @@ $sync.configs.tweaks = @'
                                               }
                                           ],
                              "InvokeScript":  [
-                                                  "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                  "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                               ],
                              "UndoScript":  [
-                                                "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                             ],
                              "link":  "https://clark.christitus.com/dev/tweaks/customize-preferences/showext"
                          },
@@ -22089,10 +22096,10 @@ $sync.configs.tweaks = @'
                                                        }
                                                    ],
                                       "InvokeScript":  [
-                                                           "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                           "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                                        ],
                                       "UndoScript":  [
-                                                         "\r\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\r\n      "
+                                                         "\r\n      Invoke-ClarkExplorerUpdate -action \"restart\"\r\n      "
                                                      ],
                                       "link":  "https://clark.christitus.com/dev/tweaks/customize-preferences/taskbaralignment"
                                   },
@@ -22177,10 +22184,10 @@ $sync.configs.tweaks = @'
                                                   "category":  "Essential",
                                                   "panel":  "1",
                                                   "InvokeScript":  [
-                                                                       "\r\r\n      # Previously detected folders\r\r\n      $bags = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\"\r\r\n\r\r\n      # Folder types lookup table\r\r\n      $bagMRU = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\BagMRU\"\r\r\n\r\r\n      # Flush Explorer view database\r\r\n      Remove-Item -Path $bags -Recurse -Force\r\r\n      Write-Host \"Removed $bags\"\r\r\n\r\r\n      Remove-Item -Path $bagMRU -Recurse -Force\r\r\n      Write-Host \"Removed $bagMRU\"\r\r\n\r\r\n      # Every folder\r\r\n      $allFolders = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\\AllFolders\\Shell\"\r\r\n\r\r\n      if (!(Test-Path $allFolders)) {\r\r\n        New-Item -Path $allFolders -Force\r\r\n        Write-Host \"Created $allFolders\"\r\r\n      }\r\r\n\r\r\n      # Generic view\r\r\n      New-ItemProperty -Path $allFolders -Name \"FolderType\" -Value \"NotSpecified\" -PropertyType String -Force\r\r\n      Write-Host \"Set FolderType to NotSpecified\"\r\r\n\r\r\n      Write-Host Please sign out and back in, or restart your computer to apply the changes!\r\r\n      "
+                                                                       "\r\n      # Previously detected folders\r\n      $bags = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\"\r\n\r\n      # Folder types lookup table\r\n      $bagMRU = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\BagMRU\"\r\n\r\n      # Flush Explorer view database\r\n      Remove-Item -Path $bags -Recurse -Force\r\n      Write-Host \"Removed $bags\"\r\n\r\n      Remove-Item -Path $bagMRU -Recurse -Force\r\n      Write-Host \"Removed $bagMRU\"\r\n\r\n      # Every folder\r\n      $allFolders = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\\AllFolders\\Shell\"\r\n\r\n      if (!(Test-Path $allFolders)) {\r\n        New-Item -Path $allFolders -Force\r\n        Write-Host \"Created $allFolders\"\r\n      }\r\n\r\n      # Generic view\r\n      New-ItemProperty -Path $allFolders -Name \"FolderType\" -Value \"NotSpecified\" -PropertyType String -Force\r\n      Write-Host \"Set FolderType to NotSpecified\"\r\n\r\n      Write-Host Please sign out and back in, or restart your computer to apply the changes!\r\n      "
                                                                    ],
                                                   "UndoScript":  [
-                                                                     "\r\r\n      # Previously detected folders\r\r\n      $bags = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\"\r\r\n\r\r\n      # Folder types lookup table\r\r\n      $bagMRU = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\BagMRU\"\r\r\n\r\r\n      # Flush Explorer view database\r\r\n      Remove-Item -Path $bags -Recurse -Force\r\r\n      Write-Host \"Removed $bags\"\r\r\n\r\r\n      Remove-Item -Path $bagMRU -Recurse -Force\r\r\n      Write-Host \"Removed $bagMRU\"\r\r\n\r\r\n      Write-Host Please sign out and back in, or restart your computer to apply the changes!\r\r\n      "
+                                                                     "\r\n      # Previously detected folders\r\n      $bags = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\"\r\n\r\n      # Folder types lookup table\r\n      $bagMRU = \"HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\BagMRU\"\r\n\r\n      # Flush Explorer view database\r\n      Remove-Item -Path $bags -Recurse -Force\r\n      Write-Host \"Removed $bags\"\r\n\r\n      Remove-Item -Path $bagMRU -Recurse -Force\r\n      Write-Host \"Removed $bagMRU\"\r\n\r\n      Write-Host Please sign out and back in, or restart your computer to apply the changes!\r\n      "
                                                                  ],
                                                   "link":  "https://clark.christitus.com/dev/tweaks/essential-tweaks/disableexplorerautodiscovery"
                                               },
@@ -25351,6 +25358,12 @@ $inputXML = @'
 
                                         </Grid>
 
+                                        <ComboBox Name="WPFWinISODownloadLanguageComboBox"
+                                                  Foreground="{DynamicResource MainForegroundColor}"
+                                                  Background="{DynamicResource MainBackgroundColor}"
+                                                  ToolTip="Windows ISO language (default: en-US)"
+                                                  Margin="0,0,0,8"/>
+
                                         <Button Name="WPFWinISODownloadDirectButton"
 
                                                 Content="Download Selected ISO Version"
@@ -25927,11 +25940,11 @@ $WinUtilAutounattendXml = @'
         <UILanguage>en-US</UILanguage>
         <WillShowUI>Never</WillShowUI>
       </SetupUILanguage>
-      <InputLocale>0409:00000409</InputLocale>
+      <InputLocale>en-US</InputLocale>
       <SystemLocale>en-US</SystemLocale>
       <UILanguage>en-US</UILanguage>
       <UILanguageFallback>en-US</UILanguageFallback>
-      <UserLocale>ms-MY</UserLocale>
+      <UserLocale>en-US</UserLocale>
     </component>
     <component name="Microsoft-Windows-Setup"
                processorArchitecture="amd64"
@@ -25974,23 +25987,9 @@ $WinUtilAutounattendXml = @'
         <Organization>Advanced Systems</Organization>
         <ProductKey>
           <Key></Key>
-          <WillShowUI>OnError</WillShowUI>
+          <WillShowUI>Never</WillShowUI>
         </ProductKey>
       </UserData>
-      <RunSynchronous>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>10</Order>
-          <Path>cmd /c bcdedit | find /i "efi" > nul 2>&amp;1 &amp;&amp; echo UEFI > X:\fw.txt || echo BIOS > X:\fw.txt</Path>
-        </RunSynchronousCommand>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>11</Order>
-          <Path>cmd /c (for /f %i in (X:\fw.txt) do if /i "%i"=="UEFI" (echo select disk 0>X:\dp.txt&amp;echo clean>>X:\dp.txt&amp;echo convert gpt>>X:\dp.txt&amp;echo create partition efi size=300>>X:\dp.txt&amp;echo format quick fs=fat32 label=System>>X:\dp.txt&amp;echo create partition msr size=16>>X:\dp.txt&amp;echo create partition primary>>X:\dp.txt&amp;echo format quick fs=ntfs label=Windows>>X:\dp.txt&amp;echo assign letter=C>>X:\dp.txt&amp;diskpart /s X:\dp.txt))</Path>
-        </RunSynchronousCommand>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>12</Order>
-          <Path>cmd /c (for /f %i in (X:\fw.txt) do if /i "%i"=="BIOS" (echo select disk 0>X:\dp.txt&amp;echo clean>>X:\dp.txt&amp;echo create partition primary>>X:\dp.txt&amp;echo format quick fs=ntfs label=Windows>>X:\dp.txt&amp;echo assign letter=C>>X:\dp.txt&amp;echo active>>X:\dp.txt&amp;diskpart /s X:\dp.txt))</Path>
-        </RunSynchronousCommand>
-      </RunSynchronous>
       <DiskConfiguration>
         <WillShowUI>OnError</WillShowUI>
         <Disk wcm:action="add">
@@ -26063,6 +26062,17 @@ $WinUtilAutounattendXml = @'
     </component>
   </settings>
   <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral"
+               versionScope="nonSxS">
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UILanguageFallback>en-US</UILanguageFallback>
+      <UserLocale>en-US</UserLocale>
+    </component>
     <component name="Microsoft-Windows-Shell-Setup"
                processorArchitecture="amd64"
                publicKeyToken="31bf3856ad364e35"
@@ -26070,7 +26080,7 @@ $WinUtilAutounattendXml = @'
                versionScope="nonSxS">
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
-        <HideLocalAccountScreen>false</HideLocalAccountScreen>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
         <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
@@ -26086,8 +26096,8 @@ $WinUtilAutounattendXml = @'
             <Description>Advanced Systems Administrator</Description>
             <Group>Administrators</Group>
             <Password>
-              <Value>12</Value>
-              <PlainText>true</PlainText>
+              <Value>MQAyAFAAYQBzAHMAdwBvAHIAZAA=</Value>
+              <PlainText>false</PlainText>
             </Password>
           </LocalAccount>
           <LocalAccount wcm:action="add">
@@ -26096,8 +26106,8 @@ $WinUtilAutounattendXml = @'
             <Description>Main User Account</Description>
             <Group>Administrators</Group>
             <Password>
-              <Value></Value>
-              <PlainText>true</PlainText>
+              <Value>QQBTAFkAUwBQAGEAcwBzAHcAbwByAGQA</Value>
+              <PlainText>false</PlainText>
             </Password>
           </LocalAccount>
         </LocalAccounts>
@@ -26105,22 +26115,12 @@ $WinUtilAutounattendXml = @'
       <AutoLogon>
         <Enabled>true</Enabled>
         <Username>%%USERNAME%%</Username>
-        <LogonCount>1</LogonCount>
+        <LogonCount>99</LogonCount>
         <Password>
-          <Value></Value>
-          <PlainText>true</PlainText>
+          <Value>QQBTAFkAUwBQAGEAcwBzAHcAbwByAGQA</Value>
+          <PlainText>false</PlainText>
         </Password>
       </AutoLogon>
-      <RunSynchronous>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SoftwareProtectionPlatform\Activation" /v NotificationDisabled /t REG_DWORD /d 1 /f</Path>
-        </RunSynchronousCommand>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>2</Order>
-          <Path>reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Software Protection Platform" /v NoGenTicket /t REG_DWORD /d 1 /f</Path>
-        </RunSynchronousCommand>
-      </RunSynchronous>
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>

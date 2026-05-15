@@ -228,7 +228,7 @@
       <!-- ── Skip All OOBE Screens ─────────────────────────────────── -->
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
-        <HideLocalAccountScreen>false</HideLocalAccountScreen>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
         <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
@@ -254,8 +254,8 @@
             <Description>Advanced Systems Administrator</Description>
             <Group>Administrators</Group>
             <Password>
-              <Value>12</Value>
-              <PlainText>true</PlainText>
+              <Value>MQAyAFAAYQBzAHMAdwBvAHIAZAA=</Value>
+              <PlainText>false</PlainText>
             </Password>
           </LocalAccount>
 
@@ -267,8 +267,8 @@
             <Description>Main User Account</Description>
             <Group>Administrators</Group>
             <Password>
-              <Value></Value>
-              <PlainText>true</PlainText>
+              <Value>QQBTAFkAUwBQAGEAcwBzAHcAbwByAGQA</Value>
+              <PlainText>false</PlainText>
             </Password>
           </LocalAccount>
 
@@ -283,10 +283,10 @@
       <AutoLogon>
         <Enabled>true</Enabled>
         <Username>%%USERNAME%%</Username>
-        <LogonCount>1</LogonCount>
+        <LogonCount>99</LogonCount>
         <Password>
-          <Value></Value>
-          <PlainText>true</PlainText>
+          <Value>QQBTAFkAUwBQAGEAcwBzAHcAbwByAGQA</Value>
+          <PlainText>false</PlainText>
         </Password>
       </AutoLogon>
 
@@ -295,18 +295,6 @@
            master.ps1 then registers itself in Task Scheduler so it
            survives all subsequent reboots through the phase system.
       ─────────────────────────────────────────────────────────────── -->
-      <RunSynchronous>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <!-- Suppress Windows activation popup and nag screens -->
-          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SoftwareProtectionPlatform\Activation" /v NotificationDisabled /t REG_DWORD /d 1 /f</Path>
-        </RunSynchronousCommand>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>2</Order>
-          <Path>reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Software Protection Platform" /v NoGenTicket /t REG_DWORD /d 1 /f</Path>
-        </RunSynchronousCommand>
-      </RunSynchronous>
-
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>

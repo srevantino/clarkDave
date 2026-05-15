@@ -1,10 +1,11 @@
+# ISO Creator supports Windows 10 and Windows 11; paths use WinISO (legacy identifiers still say Win11ISO in code/UI).
 function Get-Win11ISOLogFilePath {
     if (-not $sync["Win11ISOGlobalLogPath"]) {
-        $logDir = Join-Path $env:TEMP "ASYS_Win11ISO_Logs"
+        $logDir = Join-Path $env:TEMP "ASYS_WinISO_Logs"
         if (-not (Test-Path $logDir)) {
             New-Item -Path $logDir -ItemType Directory -Force | Out-Null
         }
-        $sync["Win11ISOGlobalLogPath"] = Join-Path $logDir ("ASYS_Win11ISO_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+        $sync["Win11ISOGlobalLogPath"] = Join-Path $logDir ("ASYS_WinISO_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
     }
 
     return $sync["Win11ISOGlobalLogPath"]
@@ -23,7 +24,7 @@ function Write-Win11ISOLogCore {
 
     try {
         $logPath = Get-Win11ISOLogFilePath
-        Add-Content -LiteralPath $logPath -Value $Line -ErrorAction SilentlyContinue
+        Add-Content -LiteralPath $logPath -Value $Line -Encoding utf8 -ErrorAction SilentlyContinue
     } catch {}
 
     if ($PARAM_NOUI) {
@@ -1495,19 +1496,22 @@ function Invoke-ClarkISOModify {
         Save-Profiles -Usernames $savedUsernames -Default $defaultUsername
         Write-Win11ISOLog "Username saved to Clark config: $mainUsername (default: $defaultUsername)"
     }
-    Write-Win11ISOLog "Build config — Username: $mainUsername | Computer: $computerName | Drivers: $injectDriversDialog"
+    Write-Win11ISOLog "Build config - Username: $mainUsername | Computer: $computerName | Drivers: $injectDriversDialog"
 
     $sync["WPFWin11ISOModifyButton"].IsEnabled = $false
     $sync["Win11ISOModifying"] = $true
 
-    $existingWorkDir = Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue |
-        Where-Object { $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $isoWorkDirCandidates = @()
+    $isoWorkDirCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_WinISO*") -ErrorAction SilentlyContinue
+    $isoWorkDirCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue
+    $existingWorkDir = $isoWorkDirCandidates |
+        Where-Object { $_ -and $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
     $workDir = if ($existingWorkDir) {
         Write-Win11ISOLog "Reusing existing temp directory: $($existingWorkDir.FullName)"
         $existingWorkDir.FullName
     } else {
-        Join-Path $env:TEMP "ASYS_Win11ISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        Join-Path $env:TEMP "ASYS_WinISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
     }
 
     $pathCandidates = @(
@@ -1607,7 +1611,7 @@ function Invoke-ClarkISOModify {
             $ts = (Get-Date).ToString("HH:mm:ss")
             $line = "[$ts] $msg"
             Write-Win11ISOLogCore -Line $line
-            Add-Content -Path (Join-Path $workDir "ASYS_Win11ISO.log") -Value $line -ErrorAction SilentlyContinue
+            Add-Content -Path (Join-Path $workDir "ASYS_WinISO.log") -Value $line -Encoding utf8 -ErrorAction SilentlyContinue
         }
 
         function SetProgress($label, $pct) {
@@ -1681,7 +1685,7 @@ function Invoke-ClarkISOModify {
             # Match only exact target editions: Home, Home Single Language, Pro
             $targetWimEditions = @($allWimEditions | Where-Object { $_.ImageName -match "\bHome Single Language\b|\bHome$|\bPro$" } | Sort-Object ImageIndex)
             if ($targetWimEditions.Count -eq 0) {
-                Log "Warning: no Home/Pro editions found — processing all editions."
+                Log "Warning: no Home/Pro editions found - processing all editions."
                 $targetWimEditions = $allWimEditions | Sort-Object ImageIndex
             }
             $editionCount = $targetWimEditions.Count
@@ -1769,10 +1773,10 @@ function Invoke-ClarkISOModify {
                     Copy-Item -Path $oemFolderSource -Destination $oemFolderDest -Recurse -Force
                     Log "OEM folder injected: $oemFolderSource -> $oemFolderDest"
                 } else {
-                    Log "Warning: tools\`$OEM`$ folder not found at '$oemFolderSource' — skipping OEM injection."
+                    Log "Warning: tools\`$OEM`$ folder not found at '$oemFolderSource' - skipping OEM injection."
                 }
             } else {
-                Log "Windows Only mode selected — skipping OEM injection. No setup scripts will be included."
+                Log "Windows Only mode selected - skipping OEM injection. No setup scripts will be included."
             }
 
 
@@ -1869,8 +1873,11 @@ function Invoke-ClarkISOCheckExistingWork {
         return
     }
 
-    $existingWorkDir = Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue |
-        Where-Object { $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $resumeIsoCandidates = @()
+    $resumeIsoCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_WinISO*") -ErrorAction SilentlyContinue
+    $resumeIsoCandidates += Get-Item -Path (Join-Path $env:TEMP "ASYS_Win11ISO*") -ErrorAction SilentlyContinue
+    $existingWorkDir = $resumeIsoCandidates |
+        Where-Object { $_ -and $_.PSIsContainer } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
     if (-not $existingWorkDir) { return }
 
@@ -1930,7 +1937,7 @@ function Invoke-ClarkISOCleanAndReset {
             $line = "[$ts] $msg"
             Write-Win11ISOLogCore -Line $line
             if ($workDir) {
-                Add-Content -Path (Join-Path $workDir "ASYS_Win11ISO.log") -Value $line -ErrorAction SilentlyContinue
+                Add-Content -Path (Join-Path $workDir "ASYS_WinISO.log") -Value $line -Encoding utf8 -ErrorAction SilentlyContinue
             }
         }
 

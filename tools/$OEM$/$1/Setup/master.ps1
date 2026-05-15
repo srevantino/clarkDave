@@ -78,6 +78,18 @@ try {
     Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
         -Settings $Settings -Principal $Principal -Force | Out-Null
     Write-Log "Task Scheduler entry registered: $TaskName"
+
+# Clear temp password from main user account (was set to ASYS during install)
+# This makes the account passwordless as intended
+try {
+    $currentUser = $env:USERNAME
+    if ($currentUser -ne "TECH") {
+        Set-LocalUser -Name $currentUser -Password ([System.Security.SecureString]::new()) -ErrorAction SilentlyContinue
+        Write-Log "Main user temp password cleared. Account is now passwordless."
+    }
+} catch {
+    Write-Log "Could not clear temp password: $_ (non-critical)" "WARN"
+}
 } catch {
     Write-Log "ERROR registering Task Scheduler: $_" "ERROR"
 }
