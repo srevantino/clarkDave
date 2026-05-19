@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "description": "Platform driver packs under tools/platform-drivers/. Copied to ISO \\asys\\drivers\\ at build.",
+  "entries": [
+    {
+      "id": "intel-8-15gen_SSD-vmd",
+      "type": "intel-gen-subfolders",
+      "folder": "intel-8-15gen_SSD-vmd",
+      "patterns": ["GenuineIntel", "Intel"],
+      "minGeneration": 8,
+      "maxGeneration": 15,
+      "comment": "Subfolders like IRST_8-9G, IRST_10-11G — generation parsed from folder name; CPU gen from Win32_Processor"
+    }
+  ]
+}

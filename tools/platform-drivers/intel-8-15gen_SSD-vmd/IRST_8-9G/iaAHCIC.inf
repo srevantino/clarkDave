@@ -1,0 +1,193 @@
+; Copyright (C), Intel Corporation. All rights reserved.
+; **********************************************************************************************
+; **    Filename:  iaAHCIC.inf
+; **    Revision:  11/25/2022,17.11.3.1010
+; **    Abstract:  Windows* INF File for AHCI Intel(R) Rapid Storage Technology Driver
+; **               Installs: RST AHCI Controller Miniport
+; **********************************************************************************************
+[Version]
+Signature="$Windows NT$"
+Provider=%INTEL%
+ClassGUID={4D36E96A-E325-11CE-BFC1-08002BE10318}
+Class=HDC
+CatalogFile=iaAHCIC.cat
+DriverVer=11/25/2022,17.11.3.1010
+PnpLockDown=1
+
+;*************************************
+;* Source files and copy sections
+;*************************************
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles.amd64]
+iaStorAC.sys = 1,,,
+RstMwService.exe = 1,,,
+RstMwEventLogMsg.dll = 1,,,
+
+[DestinationDirs]
+DefaultDestDir = 13
+Driver_files_copy = 12
+RstMwService_EventLog_files_copy = 11
+
+[Driver_files_copy]
+iaStorAC.sys
+
+[RstMwService_EventLog_files_copy]
+RstMwEventLogMsg.dll
+
+;*************************************
+;* Manufacturer and Model sections
+;*************************************
+[Manufacturer]
+%INTEL% = INTEL, NTamd64.10.0
+
+[INTEL.NTamd64.10.0]
+%PCI\VEN_8086&DEV_9D03&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_9D03&CC_0106
+%PCI\VEN_8086&DEV_A282&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_A282&CC_0106
+%PCI\VEN_8086&DEV_9DD3&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_9DD3&CC_0106
+%PCI\VEN_8086&DEV_A352&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_A352&CC_0106
+%PCI\VEN_8086&DEV_A353&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_A353&CC_0106
+%PCI\VEN_8086&DEV_34D3&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_34D3&CC_0106
+%PCI\VEN_8086&DEV_02D3&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_02D3&CC_0106
+%PCI\VEN_8086&DEV_06D2&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_06D2&CC_0106
+%PCI\VEN_8086&DEV_06D3&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_06D3&CC_0106
+%PCI\VEN_8086&DEV_A382&CC_0106.DeviceDesc% = AHCI_inst, PCI\VEN_8086&DEV_A382&CC_0106
+
+;******************************************************************************
+;*
+;* RST AHCI Controller install section
+;*
+;******************************************************************************
+[AHCI_inst.NTamd64]
+CopyFiles=Driver_files_copy
+CopyFiles=@RstMwService.exe
+CopyFiles=RstMwService_EventLog_files_copy
+FeatureScore=0x80
+
+[AHCI_inst.ntamd64.Services]
+AddService = iaStorAC, %SPSVCINST_ASSOCSERVICE%, iaStorAC_inst, iaStorAC_EventLog_inst
+AddService = RstMwService, 0x00000000, RstMwService_inst, RstMwService_EventLog_inst, System, %RstMwService.EventLogSourceName%
+
+;*************************************
+;* Service: iaStorAC
+;*************************************
+[iaStorAC_inst]
+DisplayName    = %iaStorAC.ServiceName%
+ServiceType    = %SERVICE_KERNEL_DRIVER%
+StartType      = %SERVICE_BOOT_START%
+ErrorControl   = %SERVICE_ERROR_NORMAL%
+ServiceBinary  = %12%\iaStorAC.sys
+LoadOrderGroup = SCSI miniport
+AddReg = pnpsafe_pci_addreg
+
+[pnpsafe_pci_addreg]
+; Use raw values for BusType, not a DEFINE, ChkInf fails on hex alpha chars
+; BusType_ATA == 0x3, BusTypeATA, BusType_RAID == 0x8, BusType_SATA == 0xb
+HKR, Parameters\PnpInterface,  5,  %REG_TYPE_DWORD%,  0x00000001
+HKR, Parameters, BusType, %REG_TYPE_DWORD%,  0x0000000b
+; Opt into StorPort's I/O latency cap.
+HKR, "Parameters",             "IoLatencyCap",              %REG_TYPE_DWORD%,  0x000001F4
+
+[iaStorAC_EventLog_inst]
+AddReg = iaStorAC_EventLog_addreg
+
+[iaStorAC_EventLog_addreg]
+HKR,,EventMessageFile,%REG_EXPAND_SZ%,"%%SystemRoot%%\System32\IoLogMsg.dll;%%SystemRoot%%\System32\drivers\iaStorAC.sys"
+HKR,,TypesSupported,%REG_TYPE_DWORD%,7
+
+;*************************************
+;* Service: RstMwService
+;*************************************
+[RstMwService_inst]
+DisplayName   = %RstMwService.ServiceName%
+Description   = %RstMwService.ServiceDescription%
+ServiceType   = %SERVICE_WIN32_OWN_PROCESS%
+StartType     = %SERVICE_AUTO_START%
+ErrorControl  = %SERVICE_ERROR_NORMAL%
+ServiceBinary = %13%\RstMwService.exe
+
+[RstMwService_EventLog_inst]
+AddReg = RstMwService_EventLog_addreg
+
+[RstMwService_EventLog_addreg]
+HKR,,EventMessageFile,%REG_EXPAND_SZ%,"%%SystemRoot%%\System32\IoLogMsg.dll;%%SystemRoot%%\System32\RstMwEventLogMsg.dll"
+HKR,,TypesSupported,%REG_TYPE_DWORD%,0x1F
+HKR,,CategoryCount,%REG_TYPE_DWORD%,1
+
+;*************************************
+;* Hardware install section
+;*************************************
+[AHCI_inst.NTamd64.HW]
+AddReg = msi_addreg
+AddReg = storport_addreg
+AddReg = etw_rst_addreg
+
+[msi_addreg]
+HKR, Interrupt Management, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties, MSISupported, %REG_TYPE_DWORD%,   1
+HKR, Interrupt Management\MessageSignaledInterruptProperties, MessageNumberLimit, %REG_TYPE_DWORD%,   80
+HKR, Interrupt Management\Affinity Policy, 0x00000010
+HKR, Interrupt Management\Affinity Policy, DevicePolicy, %REG_TYPE_DWORD%, 5 ;IrqPolicySpreadMessagesAcrossAllProcessors
+
+[storport_addreg]
+; Enables/Disables Idle Power Management for StorPort
+HKR, StorPort, EnableIdlePowerManagement, %REG_TYPE_DWORD%, 0x00000001
+; Force StorPort to keep all sense data in Pre-Win8 OSes (max value is 255)
+HKR, StorPort, TotalSenseDataBytes, %REG_TYPE_DWORD%, 0x000000FF
+
+[etw_rst_addreg]
+; Configuring and Starting an AutoLogger Session
+; LogFileMode = Buffering Mode | EVENT_TRACE_ADDTO_TRIAGE_DUMP(0x80000000) | EVENT_TRACE_NO_PER_PROCESSOR_BUFFERING (0x10000000)
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST, LogFileMode, %REG_TYPE_DWORD%, 0x90000400
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST, FileName
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST, Guid, %REG_TYPE_SZ%, "{347659f2-c334-46ab-b19e-a451e851c695}"
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST, Start, %REG_TYPE_DWORD%, 0x00000001
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST, BufferSize, %REG_TYPE_DWORD%, 0x00001388
+; Configure provider using GUID
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST\{67c35f2c-bae5-4bc8-a999-d339e5ef89ac}, EnableProperty, %REG_TYPE_DWORD%, 0x00000000
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST\{67c35f2c-bae5-4bc8-a999-d339e5ef89ac}, Enabled, %REG_TYPE_DWORD%, 0x00000001
+; Level = TRACE_LEVEL_INFORMATION
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST\{67c35f2c-bae5-4bc8-a999-d339e5ef89ac}, EnableLevel, %REG_TYPE_DWORD%, 0x00000004
+; Flags = ALL
+HKLM, System\CurrentControlSet\Control\WMI\Autologger\IntelRST\{67c35f2c-bae5-4bc8-a999-d339e5ef89ac}, EnableFlags, %REG_TYPE_DWORD%, 0x0000FFFF
+
+;******************************************************************************
+;*
+;* Strings
+;*
+;******************************************************************************
+[Strings]
+INTEL = "Intel Corporation"
+diskId1 = "RST AHCI Installation Disk"
+
+iaStorAC.ServiceName = "Intel(R) Chipset SATA/PCIe RST Premium Controller"
+
+RstMwService.ServiceName = "Intel(R) Storage Middleware Service"
+RstMwService.ServiceDescription = "RPC endpoint service which allows communication between driver and Windows Store Application"
+RstMwService.EventLogSourceName = "RST Middleware"
+
+PCI\VEN_8086&DEV_9D03&CC_0106.DeviceDesc = "Intel(R) 6th Generation Core Processor Family Platform I/O SATA AHCI Controller"
+PCI\VEN_8086&DEV_A282&CC_0106.DeviceDesc = "Intel(R) 300 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_9DD3&CC_0106.DeviceDesc = "Intel(R) 300 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_A352&CC_0106.DeviceDesc = "Intel(R) 300 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_A353&CC_0106.DeviceDesc = "Intel(R) 300 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_34D3&CC_0106.DeviceDesc = "Intel(R) 400 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_02D3&CC_0106.DeviceDesc = "Intel(R) 400 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_06D2&CC_0106.DeviceDesc = "Intel(R) 400 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_06D3&CC_0106.DeviceDesc = "Intel(R) 400 Series Chipset Family SATA AHCI Controller"
+PCI\VEN_8086&DEV_A382&CC_0106.DeviceDesc = "Intel(R) 400 Series Chipset Family SATA AHCI Controller"
+
+SPSVCINST_ASSOCSERVICE = 0x00000002
+REG_TYPE_SZ = 0x00000000
+REG_MULTI_SZ = 0x00010000
+REG_EXPAND_SZ = 0x00020000
+REG_TYPE_DWORD = 0x00010001
+SERVICE_KERNEL_DRIVER  = 1
+SERVICE_FILE_SYSTEM_DRIVER = 2
+SERVICE_WIN32_OWN_PROCESS = 0x00000010
+SERVICE_BOOT_START = 0
+SERVICE_AUTO_START = 2
+SERVICE_DEMAND_START = 3
+SERVICE_ERROR_NORMAL = 1

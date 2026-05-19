@@ -168,8 +168,6 @@ function Invoke-WPFButton {
 
         "WPFUpdatesdefault" {Invoke-WPFUpdatesdefault}
 
-        "WPFUpdatesdisable" {Invoke-WPFUpdatesdisable}
-
         "WPFUpdatessecurity" {Invoke-WPFUpdatessecurity}
 
         "WPFUpdateDestroyer" {Invoke-WPFUpdateDestroyer}

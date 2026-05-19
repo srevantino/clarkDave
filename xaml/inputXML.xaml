@@ -2570,8 +2570,6 @@
 
                                 <ColumnDefinition Width="*"/>
 
-                                <ColumnDefinition Width="*"/>
-
                             </Grid.ColumnDefinitions>
 
 
@@ -2676,59 +2674,9 @@
 
 
 
-                            <!-- Disable Updates -->
-
-                            <Border Grid.Column="2" Style="{StaticResource BorderStyle}">
-
-                                <StackPanel>
-
-                                    <Button Name="WPFUpdatesdisable"
-
-                                            FontSize="{DynamicResource ConfigTabButtonFontSize}"
-
-                                            Content="Disable All Updates"
-
-                                            Foreground="Red"
-
-                                            Margin="10,5"
-
-                                            Padding="10"/>
-
-                                    <TextBlock Margin="10"
-
-                                             TextWrapping="Wrap"
-
-                                             Foreground="{DynamicResource MainForegroundColor}">
-
-                                        <Run FontWeight="Bold" Foreground="Red">!! Not Recommended !!</Run>
-
-                                        <LineBreak/>
-
-                                         - Disables ALL Windows Updates
-
-                                        <LineBreak/>
-
-                                         - Increases security risks
-
-                                        <LineBreak/>
-
-                                         - Only use for isolated systems
-
-                                        <LineBreak/><LineBreak/>
-
-                                        <Run FontStyle="Italic" FontSize="11">Warning: Your system will be vulnerable without security updates.</Run>
-
-                                    </TextBlock>
-
-                                </StackPanel>
-
-                            </Border>
-
-
-
                             <!-- Update Destroyer -->
 
-                            <Border Grid.Column="3" Style="{StaticResource BorderStyle}">
+                            <Border Grid.Column="2" Style="{StaticResource BorderStyle}">
 
                                 <StackPanel>
 
@@ -2778,7 +2726,7 @@
 
                             <!-- Update Destroyer Undo -->
 
-                            <Border Grid.Column="4" Style="{StaticResource BorderStyle}">
+                            <Border Grid.Column="3" Style="{StaticResource BorderStyle}">
 
                                 <StackPanel>
 
@@ -2888,11 +2836,11 @@
 
                     <Grid.RowDefinitions>
 
-                        <RowDefinition Height="*"/>     <!-- Steps 1-4 -->
+                        <RowDefinition Height="1.25*"/>
 
-                        <RowDefinition Height="8"/>     <!-- Drag handle -->
+                        <RowDefinition Height="8"/>
 
-                        <RowDefinition Height="*"/>     <!-- Log / Status -->
+                        <RowDefinition Height="2.75*"/>
 
                     </Grid.RowDefinitions>
 
@@ -2901,14 +2849,15 @@
                     <!-- Steps 1-4 -->
                     <ScrollViewer Grid.Row="0"
                                   VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Margin="0,0,5,0">
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalAlignment="Stretch">
+                    <StackPanel Margin="0,0,5,0" VerticalAlignment="Top">
 
 
 
                             <!-- ─── STEP 1 : Select Windows 10/11 ISO ─────────────── -->
 
-                            <Grid Name="WPFWin11ISOSelectSection" Margin="5" HorizontalAlignment="Left" MinWidth="{DynamicResource ButtonWidth}">
+                            <Grid Name="WPFWin11ISOSelectSection" Margin="5,0,5,4" HorizontalAlignment="Stretch" MinWidth="{DynamicResource ButtonWidth}">
 
                                 <Grid.ColumnDefinitions>
 
@@ -2922,7 +2871,7 @@
 
                                 <!-- Left: File Selector -->
 
-                                <StackPanel Grid.Column="0" Margin="5,5,15,5">
+                                <StackPanel Grid.Column="0" Margin="5,5,15,5" VerticalAlignment="Top">
 
                                     <TextBlock FontSize="{DynamicResource FontSize}" FontWeight="Bold"
 
@@ -3016,7 +2965,17 @@
 
                                         BorderThickness="1" CornerRadius="5"
 
-                                        Margin="5" Padding="15">
+                                        Margin="5,0,5,0" Padding="10"
+
+                                        MaxHeight="340"
+
+                                        VerticalAlignment="Top">
+
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+
+                                                  HorizontalScrollBarVisibility="Disabled"
+
+                                                  VerticalAlignment="Top">
 
                                     <StackPanel>
 
@@ -3214,6 +3173,8 @@
 
                                     </StackPanel>
 
+                                    </ScrollViewer>
+
                                 </Border>
 
                             </Grid>
@@ -3224,11 +3185,11 @@
 
                             <Grid Name="WPFWin11ISOMountSection"
 
-                                  Margin="5"
+                                  Margin="5,2,5,0"
 
                                   Visibility="Collapsed"
 
-                                  HorizontalAlignment="Left" MinWidth="{DynamicResource ButtonWidth}">
+                                  HorizontalAlignment="Stretch" MinWidth="{DynamicResource ButtonWidth}">
 
                                 <Grid.ColumnDefinitions>
 
@@ -3404,11 +3365,11 @@
 
                             <StackPanel Name="WPFWin11ISOModifySection"
 
-                                        Margin="5"
+                                        Margin="5,2,5,0"
 
                                         Visibility="Collapsed"
 
-                                        HorizontalAlignment="Left" MinWidth="{DynamicResource ButtonWidth}">
+                                        HorizontalAlignment="Stretch" MinWidth="{DynamicResource ButtonWidth}">
 
                                 <TextBlock FontSize="{DynamicResource FontSize}" FontWeight="Bold"
 
@@ -3454,11 +3415,11 @@
 
                             <StackPanel Name="WPFWin11ISOOutputSection"
 
-                                        Margin="5"
+                                        Margin="5,4,5,0"
 
                                         Visibility="Collapsed"
 
-                                        HorizontalAlignment="Left" MinWidth="{DynamicResource ButtonWidth}">
+                                        HorizontalAlignment="Stretch" MinWidth="{DynamicResource ButtonWidth}">
 
                                 <!-- Header row: title + Clean & Reset button -->
 
