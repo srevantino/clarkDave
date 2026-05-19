@@ -52,6 +52,23 @@ Write-Log "master.ps1 started  v0.2"
 Write-Log "Running as: $env:USERNAME  |  Computer: $env:COMPUTERNAME"
 Write-Log "========================================================"
 
+# Ensure the main user account remains in the local Administrators group.
+try {
+    $currentUser = $env:USERNAME
+    if ($currentUser -and $currentUser -ne 'TECH') {
+        $adminMembers = @(Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop |
+            ForEach-Object { ($_.Name -split '\\')[-1] })
+        if ($currentUser -notin $adminMembers) {
+            Add-LocalGroupMember -Group 'Administrators' -Member $currentUser -ErrorAction Stop
+            Write-Log "Main user '$currentUser' added to Administrators."
+        } else {
+            Write-Log "Main user '$currentUser' is already an Administrator."
+        }
+    }
+} catch {
+    Write-Log "Could not verify Administrator membership for main user: $_" 'WARN'
+}
+
 # ── Read phase flag ───────────────────────────────────────────────────────────
 $currentPhase = 0
 if (Test-Path $FlagFile) {
@@ -79,17 +96,7 @@ try {
         -Settings $Settings -Principal $Principal -Force | Out-Null
     Write-Log "Task Scheduler entry registered: $TaskName"
 
-# Clear temp password from main user account (was set to ASYS during install)
-# This makes the account passwordless as intended
-try {
-    $currentUser = $env:USERNAME
-    if ($currentUser -ne "TECH") {
-        Set-LocalUser -Name $currentUser -Password ([System.Security.SecureString]::new()) -ErrorAction SilentlyContinue
-        Write-Log "Main user temp password cleared. Account is now passwordless."
-    }
-} catch {
-    Write-Log "Could not clear temp password: $_ (non-critical)" "WARN"
-}
+    # Main user password is set by autounattend (default: 1) and is not cleared here.
 } catch {
     Write-Log "ERROR registering Task Scheduler: $_" "ERROR"
 }
@@ -944,17 +951,7 @@ try {
 # if ($currentPhase -eq 6) {
 #     Write-Log "--- PHASE 6: Cleanup ---"
 
-#     # Demote main user from Administrator to Standard
-#     # NOTE: Main user account remains Administrator until Phase 6 runs.
-#     #       TECH account always stays as Administrator permanently.
-#     #       Both accounts are admin throughout Phases 0-5.
-#     try {
-#         $currentUser = $env:USERNAME
-#         if ($currentUser -ne "TECH") {
-#             Remove-LocalGroupMember -Group "Administrators" -Member $currentUser -ErrorAction SilentlyContinue
-#             Write-Log "  User '$currentUser' demoted to standard account."
-#         }
-#     } catch { Write-Log "  Could not demote user: $_" "WARN" }
+#     # Main user stays in Administrators (no demotion to standard user).
 
 #     # Remove Task Scheduler entry
 #     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue

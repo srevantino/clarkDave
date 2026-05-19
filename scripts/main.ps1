@@ -556,6 +556,20 @@ $sync["Form"].title = $sync["Form"].title + " " + $sync.version
 
 $sync["Form"].Add_Closing({
 
+    param($sender, $e)
+
+    if ($sync["Win11ISOModifying"] -eq $true) {
+        $answer = [System.Windows.MessageBox]::Show(
+            "Windows ISO modification is still running.`n`nClosing Clark now will stop the build and may corrupt install.wim.`n`nClose anyway?",
+            "ISO Modification In Progress",
+            "YesNoCancel",
+            "Warning")
+        if ($answer -ne "Yes") {
+            $e.Cancel = $true
+            return
+        }
+    }
+
     $sync.runspace.Dispose()
 
     $sync.runspace.Close()
@@ -592,7 +606,7 @@ $commonKeyEvents = {
 
     # Prevent shortcuts from executing if a process is already running
 
-    if ($sync.ProcessRunning -eq $true) {
+    if ($sync.ProcessRunning -eq $true -or $sync["Win11ISOModifying"] -eq $true -or $sync["Win11ISOMountVerifyRunning"] -eq $true) {
 
         return
 

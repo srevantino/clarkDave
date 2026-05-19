@@ -353,25 +353,16 @@ $($jsonAsObject | ConvertTo-Json -Depth 3)
 
 
 
-    $autopath = Join-Path $repoRoot "tools\autounattend.xml"
-
-    if (Test-Path -LiteralPath $autopath) {
-
-        $autounattendRaw = Get-Content -LiteralPath $autopath -Raw
-
-        $autounattendRaw = [regex]::Replace($autounattendRaw, "<!--.*?-->", "", [System.Text.RegularExpressions.RegexOptions]::Singleline)
-
-        $ClarkAutounattendXml = ($autounattendRaw -split "`r?`n" |
-
-            Where-Object { $_.Trim() -ne "" } |
-
-            ForEach-Object { $_.TrimEnd() }) -join "`r`n"
-
-    } else {
-
-        $ClarkAutounattendXml = ""
-
+    function ConvertTo-ClarkAutounattendEmbedded {
+        param([string]$Path)
+        if (-not (Test-Path -LiteralPath $Path)) { return "" }
+        $raw = Get-Content -LiteralPath $Path -Raw
+        $raw = [regex]::Replace($raw, "<!--.*?-->", "", [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        return ($raw -split "`r?`n" | Where-Object { $_.Trim() -ne "" } | ForEach-Object { $_.TrimEnd() }) -join "`r`n"
     }
+
+    $ClarkAutounattendXml = ConvertTo-ClarkAutounattendEmbedded -Path (Join-Path $repoRoot "tools\autounattend.xml")
+    $ClarkAutounattendLegacyXml = ConvertTo-ClarkAutounattendEmbedded -Path (Join-Path $repoRoot "tools\autounattend-legacy.xml")
 
 
 

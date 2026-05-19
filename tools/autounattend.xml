@@ -14,10 +14,8 @@
 
     ACCOUNTS CREATED:
       • TECH  (Administrator, password: 12)  — Advanced Systems admin
-      • User  (Administrator during setup)   — main account, name TBD
-        └─ User is given admin rights temporarily so master.ps1 can run
-           elevated. In Phase 6 (cleanup), User will be demoted to
-           standard user.
+      • User  (Administrator) — main account; name from Clark build dialog
+        └─ Permanent member of the local Administrators group.
 
     NOTES:
       • Win 11 hardware bypasses (TPM, SecureBoot, RAM, CPU, Storage)
@@ -108,9 +106,7 @@
         </ProductKey>
       </UserData>
 
-      <!-- Disk layout: UEFI GPT auto-partitioned.
-           WillShowUI=OnError means BIOS/Legacy machines get the
-           disk picker once — minimal fallback for non-UEFI hardware. -->
+      <!-- Disk layout: UEFI / GPT (use autounattend-legacy.xml for Legacy BIOS / MBR). -->
       <DiskConfiguration>
         <WillShowUI>OnError</WillShowUI>
         <Disk wcm:action="add">
@@ -251,7 +247,7 @@
           <LocalAccount wcm:action="add">
             <Name>TECH</Name>
             <DisplayName>TECH</DisplayName>
-            <Description>Advanced Systems Administrator</Description>
+            <Description>Administrator</Description>
             <Group>Administrators</Group>
             <Password>
               <Value>MQAyAFAAYQBzAHMAdwBvAHIAZAA=</Value>
@@ -259,21 +255,31 @@
             </Password>
           </LocalAccount>
 
-          <!-- Main user account — temporary admin rights for setup.
-               master.ps1 Phase 6 will demote this to standard user. -->
+          <!-- Main user account — permanent local Administrator -->
           <LocalAccount wcm:action="add">
             <Name>%%USERNAME%%</Name>
             <DisplayName>%%USERNAME%%</DisplayName>
-            <Description>Main User Account</Description>
+            <Description>Main User Account (Administrator)</Description>
             <Group>Administrators</Group>
             <Password>
-              <Value>QQBTAFkAUwBQAGEAcwBzAHcAbwByAGQA</Value>
+              <Value>MQ==</Value>
               <PlainText>false</PlainText>
             </Password>
           </LocalAccount>
 
         </LocalAccounts>
       </UserAccounts>
+
+      <Groups>
+        <LocalGroup wcm:action="add">
+          <GroupName>Administrators</GroupName>
+          <Members>
+            <Member wcm:action="add">
+              <Name>%%USERNAME%%</Name>
+            </Member>
+          </Members>
+        </LocalGroup>
+      </Groups>
 
       <!-- ── Auto Login ─────────────────────────────────────────────────
            Logs in as User automatically once on first boot.
@@ -285,7 +291,7 @@
         <Username>%%USERNAME%%</Username>
         <LogonCount>99</LogonCount>
         <Password>
-          <Value>QQBTAFkAUwBQAGEAcwBzAHcAbwByAGQA</Value>
+          <Value>MQ==</Value>
           <PlainText>false</PlainText>
         </Password>
       </AutoLogon>
@@ -298,6 +304,12 @@
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
+          <Description>Ensure main user is in Administrators</Description>
+          <CommandLine>cmd /c net localgroup Administrators "%%USERNAME%%" /add</CommandLine>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
           <CommandLine>powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Setup\master.ps1"</CommandLine>
           <RequiresUserInput>false</RequiresUserInput>
         </SynchronousCommand>

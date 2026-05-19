@@ -81,7 +81,8 @@ Assert-PathExists -Path (Join-Path $workingdir "tools") -Label "Tools directory"
 Assert-PathExists -Path (Join-Path $workingdir "functions") -Label "Functions directory"
 Assert-PathExists -Path (Join-Path $workingdir "config") -Label "Config directory"
 Assert-PathExists -Path (Join-Path $workingdir "xaml\inputXML.xaml") -Label "XAML input file"
-Assert-PathExists -Path (Join-Path $workingdir "tools\autounattend.xml") -Label "Autounattend file"
+Assert-PathExists -Path (Join-Path $workingdir "tools\autounattend.xml") -Label "Autounattend UEFI file"
+Assert-PathExists -Path (Join-Path $workingdir "tools\autounattend-legacy.xml") -Label "Autounattend Legacy file"
 Assert-PathExists -Path (Join-Path $workingdir "scripts\start.ps1") -Label "Start script"
 Assert-PathExists -Path (Join-Path $workingdir "scripts\main.ps1") -Label "Main script"
 
@@ -166,18 +167,25 @@ $xaml
 '@
 "@)
 
-Write-Stage -Percent 95 -StatusMessage "Adding autounattend.xml"
-$autounattendRaw = Get-Content "$workingdir\tools\autounattend.xml" -Raw
-# Strip XML comments (<!-- ... -->, including multi-line)
-$autounattendRaw = [regex]::Replace($autounattendRaw, '<!--.*?-->', '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
-# Drop blank lines and trim trailing whitespace per line
-$autounattendXml = ($autounattendRaw -split "`r?`n" |
-    Where-Object { $_.Trim() -ne '' } |
-    ForEach-Object { $_.TrimEnd() }) -join "`r`n"
+Write-Stage -Percent 95 -StatusMessage "Adding autounattend templates"
+function Get-CompiledAutounattendText {
+    param([string]$RelativePath)
+    $autounattendRaw = Get-Content (Join-Path $workingdir $RelativePath) -Raw
+    $autounattendRaw = [regex]::Replace($autounattendRaw, '<!--.*?-->', '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    return ($autounattendRaw -split "`r?`n" |
+        Where-Object { $_.Trim() -ne '' } |
+        ForEach-Object { $_.TrimEnd() }) -join "`r`n"
+}
+$autounattendUefiXml = Get-CompiledAutounattendText -RelativePath "tools\autounattend.xml"
+$autounattendLegacyXml = Get-CompiledAutounattendText -RelativePath "tools\autounattend-legacy.xml"
 $script_content.Add(@"
-`$WinUtilAutounattendXml = @'
-$autounattendXml
+`$ClarkAutounattendXml = @'
+$autounattendUefiXml
 '@
+`$ClarkAutounattendLegacyXml = @'
+$autounattendLegacyXml
+'@
+`$WinUtilAutounattendXml = `$ClarkAutounattendXml
 "@)
 
 $script_content.Add($(Get-Content (Join-Path $workingdir "scripts\main.ps1")))
