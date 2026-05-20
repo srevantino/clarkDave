@@ -6,7 +6,7 @@
 
     Organization   : Advance Systems 4042 (developed & managed)
 
-    Version        : 26.05.18
+    Version        : 26.05.19
 
 #>
 
@@ -219,7 +219,7 @@ if (Test-Path -LiteralPath (Join-Path $resolvedScriptRoot "config")) {
 
 $sync.PSScriptRoot = if ($repoRoot) { $repoRoot } else { $resolvedScriptRoot }
 
-$sync.version = "26.05.18"
+$sync.version = "26.05.19"
 
 $sync.configs = @{}
 
@@ -6119,7 +6119,7 @@ function Invoke-ClarkISOModify {
                  Background="#2d2d2d" Foreground="White" BorderBrush="#555"
                  Text="ASYS-PC"/>
         <TextBlock Foreground="#888888" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"
-                   Text="Letters, numbers, and hyphens only. The same rules apply to the main username and the computer name; computer name must be 15 characters or fewer."/>
+                   Text="Username and computer name must not be the same or setup will conflict. Computer name: 15 characters or fewer; letters, numbers, and hyphens only."/>
 
         <!-- Driver injection -->
         <CheckBox x:Name="ChkDrivers" Content="Inject current system drivers into ISO"
