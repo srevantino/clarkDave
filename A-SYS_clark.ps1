@@ -6,7 +6,7 @@
 
     Organization   : Advance Systems 4042 (developed & managed)
 
-    Version        : 26.05.19
+    Version        : 26.05.23
 
 #>
 
@@ -219,7 +219,7 @@ if (Test-Path -LiteralPath (Join-Path $resolvedScriptRoot "config")) {
 
 $sync.PSScriptRoot = if ($repoRoot) { $repoRoot } else { $resolvedScriptRoot }
 
-$sync.version = "26.05.19"
+$sync.version = "26.05.23"
 
 $sync.configs = @{}
 
