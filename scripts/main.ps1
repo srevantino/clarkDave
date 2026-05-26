@@ -1212,6 +1212,7 @@ $sync["FontScalingApplyButton"].Add_Click({
 
 $sync["WPFTab5BT"].Add_Click({
 
+    Register-ClarkIsoModifyStopUi -Sync $sync
     $sync["Form"].Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{ Invoke-ClarkISOCheckExistingWork }) | Out-Null
 
 })
@@ -1301,6 +1302,16 @@ $sync["WPFWin11ISOModifyButton"].Add_Click({
     Write-Debug "WPFWin11ISOModifyButton clicked"
 
     Invoke-ClarkISOModify
+
+})
+
+
+
+$sync["WPFWin11ISOModifyStopButton"].Add_Click({
+
+    Write-Debug "WPFWin11ISOModifyStopButton clicked"
+
+    Invoke-ClarkISOModifyStop -Sync $sync
 
 })
 

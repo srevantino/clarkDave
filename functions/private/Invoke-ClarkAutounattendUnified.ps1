@@ -65,50 +65,94 @@ function Add-ClarkAutounattendExtensions {
         [void]$autoDoc.DocumentElement.AppendChild($extensionsNode)
     }
 
+    function Set-AutounattendFileNode {
+        param($Doc, $NsMgr, $SgNs, $ExtensionsNode, [string]$FilePath, [string]$Content)
+        $escapedPath = $FilePath.Replace("'", "&apos;")
+        $existing = $Doc.SelectSingleNode("//sg:File[@path='$escapedPath']", $NsMgr)
+        $fileNode = if ($existing) { $existing } else {
+            $n = $Doc.CreateElement('File', $SgNs)
+            [void]$n.SetAttribute('path', $FilePath)
+            [void]$ExtensionsNode.AppendChild($n)
+            $n
+        }
+        $fileNode.IsEmpty = $true
+        [void]$fileNode.SetAttribute('path', $FilePath)
+        [void]$fileNode.AppendChild($Doc.CreateCDataSection($Content))
+    }
+
     $setupDir = Join-Path $ToolsRoot 'setup'
     if (Test-Path -LiteralPath $setupDir) {
         Get-ChildItem -LiteralPath $setupDir -Filter '*.ps1' -File | ForEach-Object {
             $relPath = "Windows\Setup\Scripts\$($_.Name)"
-            $existing = $autoDoc.SelectSingleNode("//sg:File[@path='$relPath']", $nsMgr)
-            $fileNode = if ($existing) { $existing } else {
-                $n = $autoDoc.CreateElement('File', $sgNs)
-                [void]$n.SetAttribute('path', $relPath)
-                [void]$extensionsNode.AppendChild($n)
-                $n
-            }
-            $fileNode.RemoveAll()
-            [void]$fileNode.SetAttribute('path', $relPath)
-            [void]$fileNode.AppendChild($autoDoc.CreateCDataSection((Get-Content -LiteralPath $_.FullName -Raw)))
+            Set-AutounattendFileNode -Doc $autoDoc -NsMgr $nsMgr -SgNs $sgNs -ExtensionsNode $extensionsNode `
+                -FilePath $relPath -Content (Get-Content -LiteralPath $_.FullName -Raw)
         }
     }
 
     $firstLogonSrc = Join-Path $setupDir 'Invoke-ClarkSetupFirstLogon.ps1'
     if (Test-Path -LiteralPath $firstLogonSrc) {
-        $flNode = $autoDoc.SelectSingleNode("//sg:File[@path='C:\Setup\Invoke-ClarkSetupFirstLogon.ps1']", $nsMgr)
-        if (-not $flNode) {
-            $flNode = $autoDoc.CreateElement('File', $sgNs)
-            [void]$flNode.SetAttribute('path', 'C:\Setup\Invoke-ClarkSetupFirstLogon.ps1')
-            [void]$extensionsNode.AppendChild($flNode)
-        }
-        $flNode.RemoveAll()
-        [void]$flNode.SetAttribute('path', 'C:\Setup\Invoke-ClarkSetupFirstLogon.ps1')
-        [void]$flNode.AppendChild($autoDoc.CreateCDataSection((Get-Content -LiteralPath $firstLogonSrc -Raw)))
+        Set-AutounattendFileNode -Doc $autoDoc -NsMgr $nsMgr -SgNs $sgNs -ExtensionsNode $extensionsNode `
+            -FilePath 'C:\Setup\Invoke-ClarkSetupFirstLogon.ps1' -Content (Get-Content -LiteralPath $firstLogonSrc -Raw)
     }
 
     $masterScriptSource = Join-Path $ToolsRoot '$OEM$\$1\Setup\master.ps1'
     if (Test-Path -LiteralPath $masterScriptSource) {
-        $masterNode = $autoDoc.SelectSingleNode("//sg:File[@path='C:\Setup\master.ps1']", $nsMgr)
-        if (-not $masterNode) {
-            $masterNode = $autoDoc.CreateElement('File', $sgNs)
-            [void]$masterNode.SetAttribute('path', 'C:\Setup\master.ps1')
-            [void]$extensionsNode.AppendChild($masterNode)
-        }
-        $masterNode.RemoveAll()
-        [void]$masterNode.SetAttribute('path', 'C:\Setup\master.ps1')
-        [void]$masterNode.AppendChild($autoDoc.CreateCDataSection((Get-Content -LiteralPath $masterScriptSource -Raw)))
+        Set-AutounattendFileNode -Doc $autoDoc -NsMgr $nsMgr -SgNs $sgNs -ExtensionsNode $extensionsNode `
+            -FilePath 'C:\Setup\master.ps1' -Content (Get-Content -LiteralPath $masterScriptSource -Raw)
     }
 
     $autoDoc.OuterXml
+}
+
+function Set-ClarkAutounattendInstallUx {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$AutounattendXml)
+
+    $doc = [xml]$AutounattendXml
+    $ns = 'urn:schemas-microsoft-com:unattend'
+    $nsMgr = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+    $nsMgr.AddNamespace('u', $ns)
+
+    $osImage = $doc.SelectSingleNode('//u:settings[@pass="windowsPE"]//u:ImageInstall/u:OSImage', $nsMgr)
+    if ($osImage) {
+        $willShow = $osImage.SelectSingleNode('u:WillShowUI', $nsMgr)
+        if (-not $willShow) {
+            $willShow = $doc.CreateElement('WillShowUI', $ns)
+            [void]$osImage.PrependChild($willShow)
+        }
+        $willShow.InnerText = 'Always'
+    }
+
+    $setup = $doc.SelectSingleNode('//u:settings[@pass="windowsPE"]/u:component[@name="Microsoft-Windows-Setup"]', $nsMgr)
+    if ($setup) {
+        $runSync = $setup.SelectSingleNode('u:RunSynchronous', $nsMgr)
+        if (-not $runSync) {
+            $runSync = $doc.CreateElement('RunSynchronous', $ns)
+            [void]$setup.InsertBefore($runSync, $setup.FirstChild)
+        }
+        $marker = 'Clark: custom install; do not auto-select OS variant'
+        $existing = $runSync.SelectNodes('u:RunSynchronousCommand', $nsMgr) |
+            Where-Object { $_.Description -and $_.Description.InnerText -like "*$marker*" } |
+            Select-Object -First 1
+        if (-not $existing) {
+            $cmd = $doc.CreateElement('RunSynchronousCommand', $ns)
+            [void]$cmd.SetAttribute('action', 'http://schemas.microsoft.com/WMIConfig/2002/State', 'add')
+            $order = $doc.CreateElement('Order', $ns); $order.InnerText = '1'
+            $desc = $doc.CreateElement('Description', $ns); $desc.InnerText = $marker
+            $path = $doc.CreateElement('Path', $ns)
+            $path.InnerText = 'reg add "HKLM\SYSTEM\Setup\MoSetup" /v UpgradeInstall /t REG_DWORD /d 0 /f & reg add "HKLM\SYSTEM\Setup" /v InstallationType /t REG_SZ /d Custom /f & reg delete "HKLM\SYSTEM\Setup\Upgrade" /f 2>nul'
+            [void]$cmd.AppendChild($order); [void]$cmd.AppendChild($desc); [void]$cmd.AppendChild($path)
+            [void]$runSync.PrependChild($cmd)
+            foreach ($node in @($runSync.SelectNodes('u:RunSynchronousCommand', $nsMgr))) {
+                if ($node -eq $cmd) { continue }
+                $orderNode = $node.SelectSingleNode('u:Order', $nsMgr)
+                if ($orderNode -and [int]$orderNode.InnerText -ge 1) {
+                    $orderNode.InnerText = ([int]$orderNode.InnerText + 1).ToString()
+                }
+            }
+        }
+    }
+    return $doc.OuterXml
 }
 
 function Copy-ClarkAsysIsoPayload {
@@ -127,14 +171,14 @@ function Copy-ClarkAsysIsoPayload {
 
     if (Test-Path -LiteralPath $setupSrc) {
         $setupDest = Join-Path $asysDest 'setup'
-        New-Item -ItemType Directory -Path $setupDest -Force | Out-Null
-        Copy-Item -Path (Join-Path $setupSrc '*') -Destination $setupDest -Recurse -Force
+        New-Item -ItemType Directory -Path $setupDest -Force -ErrorAction Stop | Out-Null
+        Copy-Item -Path (Join-Path $setupSrc '*') -Destination $setupDest -Recurse -Force -ErrorAction Stop
     }
 
     if (Test-Path -LiteralPath $driversSrc) {
         $driversDest = Join-Path $asysDest 'drivers'
-        New-Item -ItemType Directory -Path $driversDest -Force | Out-Null
-        Copy-Item -Path (Join-Path $driversSrc '*') -Destination $driversDest -Recurse -Force
+        New-Item -ItemType Directory -Path $driversDest -Force -ErrorAction Stop | Out-Null
+        Copy-Item -Path (Join-Path $driversSrc '*') -Destination $driversDest -Recurse -Force -ErrorAction Stop
     }
 }
 
@@ -168,6 +212,10 @@ function Invoke-ClarkPrepareBuildAutounattend {
     }
 
     & $Log "Autounattend: $FirmwareMode"
+    if (Get-Command Set-ClarkAutounattendInstallUx -ErrorAction SilentlyContinue) {
+        $raw = Set-ClarkAutounattendInstallUx -AutounattendXml $raw
+        & $Log 'Autounattend install UX: always show edition picker; custom install path.'
+    }
     $raw = Add-ClarkAutounattendExtensions -AutounattendXml $raw -ToolsRoot $ToolsRoot
     & $Log 'Autounattend Extensions applied (setup scripts + master.ps1).'
 

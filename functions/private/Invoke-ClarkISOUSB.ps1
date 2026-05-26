@@ -2,7 +2,16 @@ function Invoke-ClarkISORefreshUSBDrives {
 
     $combo    = $sync["WPFWin11ISOUSBDriveComboBox"]
 
-    $removable = @(Get-Disk | Where-Object { $_.BusType -eq "USB" } | Sort-Object Number)
+    try {
+        $removable = @(Get-Disk -ErrorAction Stop | Where-Object { $_.BusType -eq "USB" } | Sort-Object Number)
+    } catch {
+        Write-Win11ISOLog "Error enumerating USB drives: $($_.Exception.Message)"
+        $combo.Items.Clear()
+        $combo.Items.Add("Error detecting USB drives.")
+        $combo.SelectedIndex = 0
+        $sync["Win11ISOUSBDisks"] = @()
+        return
+    }
 
 
 
@@ -160,6 +169,8 @@ function Invoke-ClarkISOWriteUSB {
 
     $script.AddScript({
 
+        $ErrorActionPreference = 'Stop'
+
         . ([scriptblock]::Create($getLogDef))
 
         . ([scriptblock]::Create($logCoreDef))
@@ -222,11 +233,11 @@ function Invoke-ClarkISOWriteUSB {
 
         function Get-FreeDriveLetter {
 
-            $used = (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue).Name
+            $used = @([System.IO.DriveInfo]::GetDrives() | ForEach-Object { $_.Name[0] })
 
             foreach ($c in [char[]](68..90)) {
 
-                if ($used -notcontains [string]$c) { return $c }
+                if ($used -notcontains $c) { return $c }
 
             }
 
@@ -251,6 +262,7 @@ function Invoke-ClarkISOWriteUSB {
             Log "Running diskpart clean on Disk $diskNum..."
 
             $dpCleanOut = diskpart /s $dpFile1 2>&1
+            $dpCleanExitCode = $LASTEXITCODE
 
             $dpCleanOut | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
 
@@ -270,10 +282,17 @@ function Invoke-ClarkISOWriteUSB {
 
                 "select disk $diskNum`nclean`nexit" | Set-Content -Path $dpFile1b -Encoding ASCII
 
-                diskpart /s $dpFile1b 2>&1 | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
+                $dpCleanOut2 = diskpart /s $dpFile1b 2>&1
+                $dpCleanExitCode = $LASTEXITCODE
+
+                $dpCleanOut2 | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
 
                 Remove-Item $dpFile1b -Force -ErrorAction SilentlyContinue
 
+            }
+
+            if ($dpCleanExitCode -ne 0) {
+                throw "diskpart clean failed on Disk $diskNum (exit code $dpCleanExitCode). Check the log for details."
             }
 
 
@@ -338,9 +357,16 @@ function Invoke-ClarkISOWriteUSB {
 
             Log "Creating partitions on Disk $diskNum..."
 
-            diskpart /s $dpFile2 2>&1 | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
+            $dpPartOut = diskpart /s $dpFile2 2>&1
+            $dpPartExitCode = $LASTEXITCODE
+
+            $dpPartOut | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
 
             Remove-Item $dpFile2 -Force -ErrorAction SilentlyContinue
+
+            if ($dpPartExitCode -ne 0) {
+                throw "diskpart partition creation failed on Disk $diskNum (exit code $dpPartExitCode). Check the log for details."
+            }
 
 
 
@@ -382,7 +408,7 @@ function Invoke-ClarkISOWriteUSB {
 
             Get-Partition -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber |
 
-                Format-Volume -FileSystem FAT32 -NewFileSystemLabel $volLabel -Force -Confirm:$false | Out-Null
+                Format-Volume -FileSystem FAT32 -NewFileSystemLabel $volLabel -Force -Confirm:$false -ErrorAction Stop | Out-Null
 
             Log "Partition $($winpePart.PartitionNumber) formatted as FAT32."
 
@@ -396,13 +422,13 @@ function Invoke-ClarkISOWriteUSB {
 
 
 
-            try { Remove-PartitionAccessPath -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -AccessPath "$($winpePart.DriveLetter):" -ErrorAction SilentlyContinue } catch {}
+            try { Remove-PartitionAccessPath -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -AccessPath "$($winpePart.DriveLetter):" -ErrorAction SilentlyContinue } catch { Log "Note: Remove-PartitionAccessPath: $_" }
 
             $usbLetter = Get-FreeDriveLetter
 
             if (-not $usbLetter) { throw "No free drive letters (D-Z) available to assign to the USB data partition." }
 
-            Set-Partition -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -NewDriveLetter $usbLetter
+            Set-Partition -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -NewDriveLetter $usbLetter -ErrorAction Stop
 
             Log "Assigned drive letter $usbLetter to WINPE partition (Partition $($winpePart.PartitionNumber))."
 
@@ -490,7 +516,11 @@ function Invoke-ClarkISOWriteUSB {
 
                     New-Item -ItemType Directory -Path (Split-Path $splitDest) -Force | Out-Null
 
-                    Split-WindowsImage -ImagePath $installWim -SplitImagePath $splitDest -FileSize 3800 -CheckIntegrity
+                    Split-WindowsImage -ImagePath $installWim -SplitImagePath $splitDest -FileSize 3800 -CheckIntegrity -ErrorAction Stop
+
+                    if (-not (Test-Path $splitDest)) {
+                        throw "Split-WindowsImage did not produce expected output: $splitDest"
+                    }
 
                     Log "install.wim split complete."
 
@@ -498,15 +528,21 @@ function Invoke-ClarkISOWriteUSB {
 
                     & robocopy $contentsDir $usbDrive /E /XF install.wim /NFL /NDL /NJH /NJS
 
+                    if ($LASTEXITCODE -ge 8) { throw "Robocopy failed copying files to USB (exit code $LASTEXITCODE). The USB drive may be incomplete." }
+
                 } else {
 
                     & robocopy $contentsDir $usbDrive /E /NFL /NDL /NJH /NJS
+
+                    if ($LASTEXITCODE -ge 8) { throw "Robocopy failed copying files to USB (exit code $LASTEXITCODE). The USB drive may be incomplete." }
 
                 }
 
             } else {
 
                 & robocopy $contentsDir $usbDrive /E /NFL /NDL /NJH /NJS
+
+                if ($LASTEXITCODE -ge 8) { throw "Robocopy failed copying files to USB (exit code $LASTEXITCODE). The USB drive may be incomplete." }
 
             }
 
@@ -550,17 +586,24 @@ function Invoke-ClarkISOWriteUSB {
 
             Start-Sleep -Milliseconds 800
 
-            $sync["Form"].Dispatcher.Invoke([System.Action]{
+            try {
+                $f = $sync["Form"]
+                if ($f -and $f.IsLoaded) {
+                    $f.Dispatcher.Invoke([System.Action]{
 
-                $sync.progressBarTextBlock.Text    = ""
+                        $sync.progressBarTextBlock.Text    = ""
 
-                $sync.progressBarTextBlock.ToolTip = ""
+                        $sync.progressBarTextBlock.ToolTip = ""
 
-                $sync.ProgressBar.Value            = 0
+                        $sync.ProgressBar.Value            = 0
 
-                $sync["WPFWin11ISOWriteUSBButton"].IsEnabled = $true
+                        $sync["WPFWin11ISOWriteUSBButton"].IsEnabled = $true
 
-            })
+                    })
+                }
+            } catch {
+                # Form may have been closed during USB write — suppress dispatcher errors
+            }
 
         }
 
@@ -568,7 +611,8 @@ function Invoke-ClarkISOWriteUSB {
 
 
 
-    $script.BeginInvoke() | Out-Null
+    $sync["_isoUsbPowerShell"] = $script
+    $sync["_isoUsbAsyncResult"] = $script.BeginInvoke()
 
 }
 

@@ -66,6 +66,61 @@ function Show-ClarkSetupError {
     }
 }
 
+function Get-ClarkInstallCandidateDisks {
+    $minBytes = 100GB
+    Get-Disk -ErrorAction SilentlyContinue |
+        Where-Object {
+            -not $_.IsOffline -and -not $_.IsRemovable -and
+            $_.BusType -notin @('USB', 'SD') -and $_.Size -gt $minBytes
+        } | Sort-Object Size -Descending
+}
+
+function Show-ClarkDiskSelectionDialog {
+    param([Parameter(Mandatory)]$Disks)
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = 'Clark Setup — Select installation disk'
+    $form.StartPosition = 'CenterScreen'
+    $form.FormBorderStyle = 'FixedDialog'
+    $form.MaximizeBox = $false
+    $form.ClientSize = New-Object System.Drawing.Size(560, 320)
+    $label = New-Object System.Windows.Forms.Label
+    $label.Location = New-Object System.Drawing.Point(20, 16)
+    $label.Size = New-Object System.Drawing.Size(520, 48)
+    $label.Text = 'Multiple internal disks found. Choose where to install Windows. Only the selected disk will be repartitioned.'
+    $form.Controls.Add($label)
+    $list = New-Object System.Windows.Forms.ListBox
+    $list.Location = New-Object System.Drawing.Point(20, 72)
+    $list.Size = New-Object System.Drawing.Size(520, 180)
+    $form.Controls.Add($list)
+    $diskMap = @{}
+    foreach ($d in $Disks) {
+        $display = "Disk {0} — {1} GB — {2}" -f $d.Number, [math]::Round($d.Size / 1GB, 0), $d.FriendlyName
+        [void]$list.Items.Add($display)
+        $diskMap[$display] = $d
+    }
+    $list.SelectedIndex = 0
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Install here'; $ok.DialogResult = 'OK'
+    $ok.Location = New-Object System.Drawing.Point(360, 268); $ok.Size = New-Object System.Drawing.Size(90, 28)
+    $form.AcceptButton = $ok; $form.Controls.Add($ok)
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = 'Cancel'; $cancel.DialogResult = 'Cancel'
+    $cancel.Location = New-Object System.Drawing.Point(460, 268); $cancel.Size = New-Object System.Drawing.Size(80, 28)
+    $form.CancelButton = $cancel; $form.Controls.Add($cancel)
+    if ($form.ShowDialog() -ne 'OK') { throw 'Windows installation cancelled — no disk was selected.' }
+    $diskMap[[string]$list.SelectedItem]
+}
+
+function Select-ClarkTargetDisk {
+    $candidates = @(Get-ClarkInstallCandidateDisks)
+    if ($candidates.Count -eq 0) { throw 'No internal disk >100 GB found (non-removable). Unplug USB install drives.' }
+    if ($candidates.Count -eq 1) { return $candidates[0] }
+    Write-ClarkSetupLog -Message ("Multiple disks ({0}); showing picker." -f $candidates.Count) -LogName 'disk-layout.log'
+    Show-ClarkDiskSelectionDialog -Disks $candidates
+}
+
 function Invoke-ClarkSetupPhase {
     param(
         [Parameter(Mandatory)][string]$PhaseName,

@@ -6,7 +6,7 @@
 
     Organization   : Advance Systems 4042 (developed & managed)
 
-    Version        : 26.05.23
+    Version        : 26.05.26
 
 #>
 
@@ -145,11 +145,29 @@ try {
 }
 "@
         $encodedCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($bootstrapCommand))
-        Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-EncodedCommand', $encodedCommand) -Verb RunAs -ErrorAction Stop
+        try {
+            Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-EncodedCommand', $encodedCommand) -Verb RunAs -ErrorAction Stop
+        } catch {
+            Write-Host ""
+            Write-Host "clark requires Administrator privileges to run." -ForegroundColor Yellow
+            Write-Host "Please accept the UAC prompt, or right-click the script and select 'Run as administrator'." -ForegroundColor Yellow
+            Write-Host ""
+            if ($Host.Name -eq 'ConsoleHost') { Read-Host "Press Enter to close" | Out-Null }
+            exit 1
+        }
 
     } else {
 
-        Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-Command', $script) -Verb RunAs -ErrorAction Stop
+        try {
+            Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-Command', $script) -Verb RunAs -ErrorAction Stop
+        } catch {
+            Write-Host ""
+            Write-Host "clark requires Administrator privileges to run." -ForegroundColor Yellow
+            Write-Host "Please accept the UAC prompt, or right-click the script and select 'Run as administrator'." -ForegroundColor Yellow
+            Write-Host ""
+            if ($Host.Name -eq 'ConsoleHost') { Read-Host "Press Enter to close" | Out-Null }
+            exit 1
+        }
 
     }
 
@@ -219,7 +237,7 @@ if (Test-Path -LiteralPath (Join-Path $resolvedScriptRoot "config")) {
 
 $sync.PSScriptRoot = if ($repoRoot) { $repoRoot } else { $resolvedScriptRoot }
 
-$sync.version = "26.05.23"
+$sync.version = "26.05.26"
 
 $sync.configs = @{}
 
@@ -3817,50 +3835,94 @@ function Add-ClarkAutounattendExtensions {
         [void]$autoDoc.DocumentElement.AppendChild($extensionsNode)
     }
 
+    function Set-AutounattendFileNode {
+        param($Doc, $NsMgr, $SgNs, $ExtensionsNode, [string]$FilePath, [string]$Content)
+        $escapedPath = $FilePath.Replace("'", "&apos;")
+        $existing = $Doc.SelectSingleNode("//sg:File[@path='$escapedPath']", $NsMgr)
+        $fileNode = if ($existing) { $existing } else {
+            $n = $Doc.CreateElement('File', $SgNs)
+            [void]$n.SetAttribute('path', $FilePath)
+            [void]$ExtensionsNode.AppendChild($n)
+            $n
+        }
+        $fileNode.IsEmpty = $true
+        [void]$fileNode.SetAttribute('path', $FilePath)
+        [void]$fileNode.AppendChild($Doc.CreateCDataSection($Content))
+    }
+
     $setupDir = Join-Path $ToolsRoot 'setup'
     if (Test-Path -LiteralPath $setupDir) {
         Get-ChildItem -LiteralPath $setupDir -Filter '*.ps1' -File | ForEach-Object {
             $relPath = "Windows\Setup\Scripts\$($_.Name)"
-            $existing = $autoDoc.SelectSingleNode("//sg:File[@path='$relPath']", $nsMgr)
-            $fileNode = if ($existing) { $existing } else {
-                $n = $autoDoc.CreateElement('File', $sgNs)
-                [void]$n.SetAttribute('path', $relPath)
-                [void]$extensionsNode.AppendChild($n)
-                $n
-            }
-            $fileNode.RemoveAll()
-            [void]$fileNode.SetAttribute('path', $relPath)
-            [void]$fileNode.AppendChild($autoDoc.CreateCDataSection((Get-Content -LiteralPath $_.FullName -Raw)))
+            Set-AutounattendFileNode -Doc $autoDoc -NsMgr $nsMgr -SgNs $sgNs -ExtensionsNode $extensionsNode `
+                -FilePath $relPath -Content (Get-Content -LiteralPath $_.FullName -Raw)
         }
     }
 
     $firstLogonSrc = Join-Path $setupDir 'Invoke-ClarkSetupFirstLogon.ps1'
     if (Test-Path -LiteralPath $firstLogonSrc) {
-        $flNode = $autoDoc.SelectSingleNode("//sg:File[@path='C:\Setup\Invoke-ClarkSetupFirstLogon.ps1']", $nsMgr)
-        if (-not $flNode) {
-            $flNode = $autoDoc.CreateElement('File', $sgNs)
-            [void]$flNode.SetAttribute('path', 'C:\Setup\Invoke-ClarkSetupFirstLogon.ps1')
-            [void]$extensionsNode.AppendChild($flNode)
-        }
-        $flNode.RemoveAll()
-        [void]$flNode.SetAttribute('path', 'C:\Setup\Invoke-ClarkSetupFirstLogon.ps1')
-        [void]$flNode.AppendChild($autoDoc.CreateCDataSection((Get-Content -LiteralPath $firstLogonSrc -Raw)))
+        Set-AutounattendFileNode -Doc $autoDoc -NsMgr $nsMgr -SgNs $sgNs -ExtensionsNode $extensionsNode `
+            -FilePath 'C:\Setup\Invoke-ClarkSetupFirstLogon.ps1' -Content (Get-Content -LiteralPath $firstLogonSrc -Raw)
     }
 
     $masterScriptSource = Join-Path $ToolsRoot '$OEM$\$1\Setup\master.ps1'
     if (Test-Path -LiteralPath $masterScriptSource) {
-        $masterNode = $autoDoc.SelectSingleNode("//sg:File[@path='C:\Setup\master.ps1']", $nsMgr)
-        if (-not $masterNode) {
-            $masterNode = $autoDoc.CreateElement('File', $sgNs)
-            [void]$masterNode.SetAttribute('path', 'C:\Setup\master.ps1')
-            [void]$extensionsNode.AppendChild($masterNode)
-        }
-        $masterNode.RemoveAll()
-        [void]$masterNode.SetAttribute('path', 'C:\Setup\master.ps1')
-        [void]$masterNode.AppendChild($autoDoc.CreateCDataSection((Get-Content -LiteralPath $masterScriptSource -Raw)))
+        Set-AutounattendFileNode -Doc $autoDoc -NsMgr $nsMgr -SgNs $sgNs -ExtensionsNode $extensionsNode `
+            -FilePath 'C:\Setup\master.ps1' -Content (Get-Content -LiteralPath $masterScriptSource -Raw)
     }
 
     $autoDoc.OuterXml
+}
+
+function Set-ClarkAutounattendInstallUx {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$AutounattendXml)
+
+    $doc = [xml]$AutounattendXml
+    $ns = 'urn:schemas-microsoft-com:unattend'
+    $nsMgr = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+    $nsMgr.AddNamespace('u', $ns)
+
+    $osImage = $doc.SelectSingleNode('//u:settings[@pass="windowsPE"]//u:ImageInstall/u:OSImage', $nsMgr)
+    if ($osImage) {
+        $willShow = $osImage.SelectSingleNode('u:WillShowUI', $nsMgr)
+        if (-not $willShow) {
+            $willShow = $doc.CreateElement('WillShowUI', $ns)
+            [void]$osImage.PrependChild($willShow)
+        }
+        $willShow.InnerText = 'Always'
+    }
+
+    $setup = $doc.SelectSingleNode('//u:settings[@pass="windowsPE"]/u:component[@name="Microsoft-Windows-Setup"]', $nsMgr)
+    if ($setup) {
+        $runSync = $setup.SelectSingleNode('u:RunSynchronous', $nsMgr)
+        if (-not $runSync) {
+            $runSync = $doc.CreateElement('RunSynchronous', $ns)
+            [void]$setup.InsertBefore($runSync, $setup.FirstChild)
+        }
+        $marker = 'Clark: custom install; do not auto-select OS variant'
+        $existing = $runSync.SelectNodes('u:RunSynchronousCommand', $nsMgr) |
+            Where-Object { $_.Description -and $_.Description.InnerText -like "*$marker*" } |
+            Select-Object -First 1
+        if (-not $existing) {
+            $cmd = $doc.CreateElement('RunSynchronousCommand', $ns)
+            [void]$cmd.SetAttribute('action', 'http://schemas.microsoft.com/WMIConfig/2002/State', 'add')
+            $order = $doc.CreateElement('Order', $ns); $order.InnerText = '1'
+            $desc = $doc.CreateElement('Description', $ns); $desc.InnerText = $marker
+            $path = $doc.CreateElement('Path', $ns)
+            $path.InnerText = 'reg add "HKLM\SYSTEM\Setup\MoSetup" /v UpgradeInstall /t REG_DWORD /d 0 /f & reg add "HKLM\SYSTEM\Setup" /v InstallationType /t REG_SZ /d Custom /f & reg delete "HKLM\SYSTEM\Setup\Upgrade" /f 2>nul'
+            [void]$cmd.AppendChild($order); [void]$cmd.AppendChild($desc); [void]$cmd.AppendChild($path)
+            [void]$runSync.PrependChild($cmd)
+            foreach ($node in @($runSync.SelectNodes('u:RunSynchronousCommand', $nsMgr))) {
+                if ($node -eq $cmd) { continue }
+                $orderNode = $node.SelectSingleNode('u:Order', $nsMgr)
+                if ($orderNode -and [int]$orderNode.InnerText -ge 1) {
+                    $orderNode.InnerText = ([int]$orderNode.InnerText + 1).ToString()
+                }
+            }
+        }
+    }
+    return $doc.OuterXml
 }
 
 function Copy-ClarkAsysIsoPayload {
@@ -3879,14 +3941,14 @@ function Copy-ClarkAsysIsoPayload {
 
     if (Test-Path -LiteralPath $setupSrc) {
         $setupDest = Join-Path $asysDest 'setup'
-        New-Item -ItemType Directory -Path $setupDest -Force | Out-Null
-        Copy-Item -Path (Join-Path $setupSrc '*') -Destination $setupDest -Recurse -Force
+        New-Item -ItemType Directory -Path $setupDest -Force -ErrorAction Stop | Out-Null
+        Copy-Item -Path (Join-Path $setupSrc '*') -Destination $setupDest -Recurse -Force -ErrorAction Stop
     }
 
     if (Test-Path -LiteralPath $driversSrc) {
         $driversDest = Join-Path $asysDest 'drivers'
-        New-Item -ItemType Directory -Path $driversDest -Force | Out-Null
-        Copy-Item -Path (Join-Path $driversSrc '*') -Destination $driversDest -Recurse -Force
+        New-Item -ItemType Directory -Path $driversDest -Force -ErrorAction Stop | Out-Null
+        Copy-Item -Path (Join-Path $driversSrc '*') -Destination $driversDest -Recurse -Force -ErrorAction Stop
     }
 }
 
@@ -3920,6 +3982,10 @@ function Invoke-ClarkPrepareBuildAutounattend {
     }
 
     & $Log "Autounattend: $FirmwareMode"
+    if (Get-Command Set-ClarkAutounattendInstallUx -ErrorAction SilentlyContinue) {
+        $raw = Set-ClarkAutounattendInstallUx -AutounattendXml $raw
+        & $Log 'Autounattend install UX: always show edition picker; custom install path.'
+    }
     $raw = Add-ClarkAutounattendExtensions -AutounattendXml $raw -ToolsRoot $ToolsRoot
     & $Log 'Autounattend Extensions applied (setup scripts + master.ps1).'
 
@@ -4771,6 +4837,7 @@ function Get-ClarkISOOrphanedMounts {
 }
 
 function Invoke-ClarkISORepairOrphanedMounts {
+    # Replaced at compile time by Invoke-ClarkIsoBuildSupport.ps1 (loads later in A-SYS_clark.ps1).
     $orphans = @(Get-ClarkISOOrphanedMounts)
     if ($orphans.Count -eq 0) { return $false }
 
@@ -4838,10 +4905,9 @@ function Invoke-ClarkISODismountSaveWithHeartbeat {
                 & $OnLog 'Still saving install.wim - please wait (do not close Clark).'
             }
         }
-        $job | Receive-Job -ErrorAction Stop | Out-Null
+        $jobOutput = @($job | Receive-Job -ErrorAction SilentlyContinue 2>&1)
         if ($job.State -eq 'Failed') {
-            $errs = @(Receive-Job -Job $job -ErrorAction SilentlyContinue 2>&1)
-            $msg = if ($errs.Count) { ($errs | Out-String).Trim() } else { 'DISM save job failed.' }
+            $msg = if ($jobOutput.Count) { ($jobOutput | Out-String).Trim() } else { 'DISM save job failed.' }
             throw $msg
         }
     } finally {
@@ -5076,10 +5142,38 @@ function Set-ClarkISODirectDownloadVersions {
 }
 
 function Get-ClarkISODirectDownloadLanguageCatalog {
-    # Label shown to user + Fido language token.
-    # Keep only US English to avoid locale confusion in downloads.
     return @(
-        @{ Label = "English (US)"; FidoLanguage = "English" }
+        @{ Label = "English (US)";              FidoLanguage = "English" }
+        @{ Label = "English (International)";   FidoLanguage = "English International" }
+        @{ Label = "French";                    FidoLanguage = "French" }
+        @{ Label = "German";                    FidoLanguage = "German" }
+        @{ Label = "Spanish (International)";   FidoLanguage = "Spanish" }
+        @{ Label = "Spanish (Latin America)";   FidoLanguage = "Spanish (Mexico)" }
+        @{ Label = "Italian";                   FidoLanguage = "Italian" }
+        @{ Label = "Portuguese (Brazil)";       FidoLanguage = "Brazilian Portuguese" }
+        @{ Label = "Portuguese (Portugal)";     FidoLanguage = "Portuguese" }
+        @{ Label = "Dutch";                     FidoLanguage = "Dutch" }
+        @{ Label = "Russian";                   FidoLanguage = "Russian" }
+        @{ Label = "Japanese";                  FidoLanguage = "Japanese" }
+        @{ Label = "Korean";                    FidoLanguage = "Korean" }
+        @{ Label = "Chinese (Simplified)";      FidoLanguage = "Chinese (Simplified)" }
+        @{ Label = "Chinese (Traditional)";     FidoLanguage = "Chinese (Traditional)" }
+        @{ Label = "Polish";                    FidoLanguage = "Polish" }
+        @{ Label = "Turkish";                   FidoLanguage = "Turkish" }
+        @{ Label = "Swedish";                   FidoLanguage = "Swedish" }
+        @{ Label = "Danish";                    FidoLanguage = "Danish" }
+        @{ Label = "Norwegian";                 FidoLanguage = "Norwegian" }
+        @{ Label = "Finnish";                   FidoLanguage = "Finnish" }
+        @{ Label = "Czech";                     FidoLanguage = "Czech" }
+        @{ Label = "Greek";                     FidoLanguage = "Greek" }
+        @{ Label = "Hungarian";                 FidoLanguage = "Hungarian" }
+        @{ Label = "Romanian";                  FidoLanguage = "Romanian" }
+        @{ Label = "Croatian";                  FidoLanguage = "Croatian" }
+        @{ Label = "Slovak";                    FidoLanguage = "Slovak" }
+        @{ Label = "Thai";                      FidoLanguage = "Thai" }
+        @{ Label = "Arabic";                    FidoLanguage = "Arabic" }
+        @{ Label = "Hebrew";                    FidoLanguage = "Hebrew" }
+        @{ Label = "Ukrainian";                 FidoLanguage = "Ukrainian" }
     )
 }
 
@@ -5135,8 +5229,20 @@ function Get-ClarkFidoScriptPath {
     $fidoPath = Join-Path $toolsDir "Fido.ps1"
     if (-not (Test-Path $fidoPath)) {
         Write-Win11ISOLog "Downloading Fido helper script from GitHub..."
-        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pbatard/Fido/master/Fido.ps1" -OutFile $fidoPath -UseBasicParsing
-        Write-Win11ISOLog "Fido helper script downloaded."
+        $fidoTmp = "$fidoPath.tmp"
+        try {
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pbatard/Fido/master/Fido.ps1" -OutFile $fidoTmp -UseBasicParsing -ErrorAction Stop
+        } catch {
+            if (Test-Path $fidoTmp) { Remove-Item $fidoTmp -Force -ErrorAction SilentlyContinue }
+            throw "Failed to download Fido helper script: $($_.Exception.Message)"
+        }
+        $fidoContent = Get-Content $fidoTmp -Raw -ErrorAction Stop
+        if ($fidoContent.Length -lt 1024 -or $fidoContent -notmatch 'param\s*\(') {
+            Remove-Item $fidoTmp -Force -ErrorAction SilentlyContinue
+            throw "Downloaded Fido.ps1 appears truncated or invalid (size: $($fidoContent.Length) chars). The download may have been interrupted."
+        }
+        Move-Item $fidoTmp $fidoPath -Force
+        Write-Win11ISOLog "Fido helper script downloaded and validated ($('{0:N0}' -f $fidoContent.Length) chars)."
     }
 
     return $fidoPath
@@ -5208,7 +5314,7 @@ function New-ClarkISODownloadHttpClient {
         $client.Timeout = [TimeSpan]::FromDays(7)
     }
     [void]$client.DefaultRequestHeaders.UserAgent.ParseAdd(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
     )
     [void]$client.DefaultRequestHeaders.TryAddWithoutValidation('Accept', '*/*')
     return $client
@@ -5337,15 +5443,53 @@ function Invoke-ClarkISOBitsOrHttpDownload {
 
         try {
             $client = New-ClarkISODownloadHttpClient
-            $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+            $existingBytes = 0L
+            $fileMode = [System.IO.FileMode]::Create
+
+            if (Test-Path -LiteralPath $Destination) {
+                $existingBytes = (Get-Item -LiteralPath $Destination).Length
+            }
+
+            if ($existingBytes -gt 0) {
+                $headReq = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Head, $Url)
+                $headResp = $client.SendAsync($headReq).GetAwaiter().GetResult()
+                $supportsRange = $headResp.Headers.AcceptRanges -and ($headResp.Headers.AcceptRanges -contains 'bytes')
+                $headResp.Dispose()
+                $headReq.Dispose()
+
+                if ($supportsRange) {
+                    Write-Win11ISOLog "Partial file found ($([Math]::Round($existingBytes / 1MB, 1)) MB). Server supports Range requests - resuming."
+                    $rangeReq = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $Url)
+                    $rangeReq.Headers.Range = [System.Net.Http.Headers.RangeHeaderValue]::new($existingBytes, $null)
+                    $response = $client.SendAsync($rangeReq, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+                    $rangeReq.Dispose()
+                    if ([int]$response.StatusCode -eq 206) {
+                        $fileMode = [System.IO.FileMode]::Append
+                    } else {
+                        Write-Win11ISOLog "Server returned $([int]$response.StatusCode) instead of 206 Partial Content - restarting download."
+                        $response.Dispose()
+                        $response = $null
+                        $existingBytes = 0L
+                    }
+                } else {
+                    Write-Win11ISOLog "Server does not support Range requests - restarting download from scratch."
+                    $existingBytes = 0L
+                }
+            }
+
+            if (-not $response) {
+                $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+            }
             $response.EnsureSuccessStatusCode()
-            $totalBytes = [double]($response.Content.Headers.ContentLength | ForEach-Object { $_ })
-            if (-not $totalBytes) { $totalBytes = 0.0 }
+
+            $contentLength = [double]($response.Content.Headers.ContentLength | ForEach-Object { $_ })
+            $totalBytes = if ($contentLength -and $contentLength -gt 0) { $contentLength + $existingBytes } else { 0.0 }
 
             $sourceStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
-            $targetStream = [System.IO.File]::Open($Destination, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+            $targetStream = [System.IO.File]::Open($Destination, $fileMode, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
             $buffer = New-Object byte[] (1024 * 1024)
-            $downloadedBytes = 0.0
+            $downloadedBytes = [double]$existingBytes
+            $sessionDownloadedBytes = 0.0
             $lastUpdate = Get-Date
             $httpStart = Get-Date
 
@@ -5367,11 +5511,12 @@ function Invoke-ClarkISOBitsOrHttpDownload {
 
                 $targetStream.Write($buffer, 0, $read)
                 $downloadedBytes += $read
+                $sessionDownloadedBytes += $read
 
                 if (((Get-Date) - $lastUpdate).TotalMilliseconds -ge 1000) {
                     $percent = if ($totalBytes -gt 0) { [int][Math]::Round(($downloadedBytes / $totalBytes) * 100, 0) } else { 0 }
                     $elapsedSeconds = [Math]::Max(1.0, ((Get-Date) - $httpStart).TotalSeconds)
-                    $speedBps = if ($downloadedBytes -gt 0) { $downloadedBytes / $elapsedSeconds } else { 0.0 }
+                    $speedBps = if ($sessionDownloadedBytes -gt 0) { $sessionDownloadedBytes / $elapsedSeconds } else { 0.0 }
                     $remainingBytes = [Math]::Max(0.0, $totalBytes - $downloadedBytes)
                     $etaText = if ($speedBps -gt 0 -and $totalBytes -gt 0) {
                         $etaSeconds = [int][Math]::Ceiling($remainingBytes / $speedBps)
@@ -5560,10 +5705,16 @@ function Invoke-ClarkISODirectDownload {
                 }
             }
 
+            Set-ClarkProgressBar -Label "Verifying ISO integrity (SHA-256)..." -Percent 98
+            Set-ClarkISODownloadProgress -Percent 98 -Text "Verifying ISO integrity..."
+            Write-Win11ISOLog "Computing SHA-256 hash of downloaded ISO..."
+            $isoHash = (Get-FileHash -Path $destination -Algorithm SHA256).Hash
+            Write-Win11ISOLog "ISO SHA-256: $isoHash"
+
             Set-ClarkProgressBar -Label "Download complete" -Percent 100
             Set-ClarkISODownloadProgress -Percent 100 -Text "Download complete: $destination"
             Write-Win11ISOLog "ISO download completed: $destination"
-            $null = Show-ClarkISOMessageBox -Message "ISO download complete:`n`n$destination" -Title "Download Complete" -Button OK -Image Information
+            $null = Show-ClarkISOMessageBox -Message "ISO download complete:`n`n$destination`n`nSHA-256: $isoHash" -Title "Download Complete" -Button OK -Image Information
         } catch {
             $errMsg = [string]$_.Exception.Message
             if ($errMsg -match "stopped by user") {
@@ -5722,6 +5873,13 @@ function Invoke-ClarkISOMountAndVerify {
 
         try {
             Write-Win11ISOLog "Mounting ISO: $isoPath"
+            MountVerify-SetProgress "Computing SHA-256..." 5
+            try {
+                $isoHash = (Get-FileHash -Path $isoPath -Algorithm SHA256).Hash
+                Write-Win11ISOLog "ISO SHA-256: $isoHash"
+            } catch {
+                Write-Win11ISOLog "Warning: could not compute ISO hash: $($_.Exception.Message)"
+            }
             MountVerify-SetProgress "Mounting ISO..." 10
 
             Mount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null
@@ -5745,7 +5903,7 @@ function Invoke-ClarkISOMountAndVerify {
             $esdPath = Join-Path $driveLetter "sources\install.esd"
 
             if (-not (Test-Path $wimPath) -and -not (Test-Path $esdPath)) {
-                Dismount-DiskImage -ImagePath $isoPath | Out-Null
+                try { Dismount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null } catch { Write-Win11ISOLog "Warning: could not dismount ISO: $($_.Exception.Message)" }
                 Write-Win11ISOLog "ERROR: install.wim/install.esd not found - not a valid Windows ISO."
                 $sync["Form"].Dispatcher.Invoke([System.Action]{
                     [System.Windows.MessageBox]::Show(
@@ -5765,11 +5923,15 @@ function Invoke-ClarkISOMountAndVerify {
                 $_.ImageName -notmatch 'Windows Server'
             }
             if (-not $clientImages) {
-                Dismount-DiskImage -ImagePath $isoPath | Out-Null
-                Write-Win11ISOLog "ERROR: No Windows 10 or Windows 11 client edition found in the image."
+                $foundNames = ($imageInfo | ForEach-Object { $_.ImageName }) -join "`n  - "
+                if (-not $foundNames) { $foundNames = "(none)" }
+                try { Dismount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null } catch { Write-Win11ISOLog "Warning: could not dismount ISO: $($_.Exception.Message)" }
+                Write-Win11ISOLog "ERROR: No Windows 10 or Windows 11 client edition found. Editions present: $foundNames"
+                $sync["__isoFoundEditions"] = $foundNames
                 $sync["Form"].Dispatcher.Invoke([System.Action]{
+                    $editions = [string]$sync["__isoFoundEditions"]
                     [System.Windows.MessageBox]::Show(
-                        "No Windows 10 or Windows 11 client edition was found in this ISO.`n`nUse an official Windows 10 or Windows 11 ISO from Microsoft (not Windows Server).",
+                        "No Windows 10 or Windows 11 client edition was found in this ISO.`n`nEditions found:`n  - $editions`n`nUse an official Windows 10 or Windows 11 ISO from Microsoft (not Windows Server).",
                         "Unsupported ISO", "OK", "Error")
                 })
                 return
@@ -6267,14 +6429,11 @@ function Invoke-ClarkISOModify {
     $sync["Win11ISOModifying"] = $true
     $sync.ProcessRunning = $true
 
-    $existingWorkDir = @(Get-ClarkISOWorkDirectoryCandidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+    Reset-ClarkIsoModifyStop -Sync $sync
+    Set-ClarkIsoModifyControlState -Sync $sync -IsRunning $true
 
-    $workDir = if ($existingWorkDir) {
-        Write-Win11ISOLog "Reusing existing temp directory: $($existingWorkDir.FullName)"
-        $existingWorkDir.FullName
-    } else {
-        Join-Path $env:TEMP "ASYS_WinISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-    }
+    $workDir = Resolve-ClarkIsoWorkDirectory -Log { param($m) Write-Win11ISOLog $m } `
+        -GetCandidates { Get-ClarkISOWorkDirectoryCandidates }
 
     $pathCandidates = @(
         (Join-Path $PSScriptRoot "tools"),
@@ -6331,10 +6490,12 @@ function Invoke-ClarkISOModify {
     $dismountHeartbeatDef = "function Invoke-ClarkISODismountSaveWithHeartbeat {`n" + ${function:Invoke-ClarkISODismountSaveWithHeartbeat}.ToString() + "`n}"
     $getLogDef        = "function Get-Win11ISOLogFilePath {`n" + ${function:Get-Win11ISOLogFilePath}.ToString() + "`n}"
     $logCoreDef       = "function Write-Win11ISOLogCore {`n" + ${function:Write-Win11ISOLogCore}.ToString() + "`n}"
+    $clarkIsoWorkerFuncDefs = @(Get-ClarkIsoWorkerFunctionDefinitions)
     $runspace.SessionStateProxy.SetVariable("isoScriptFuncDef",       $isoScriptFuncDef)
     $runspace.SessionStateProxy.SetVariable("dismountHeartbeatDef",   $dismountHeartbeatDef)
     $runspace.SessionStateProxy.SetVariable("getLogDef",                $getLogDef)
     $runspace.SessionStateProxy.SetVariable("logCoreDef",               $logCoreDef)
+    $runspace.SessionStateProxy.SetVariable("clarkIsoWorkerFuncDefs",   $clarkIsoWorkerFuncDefs)
 
     $script = [Management.Automation.PowerShell]::Create()
     $script.Runspace = $runspace
@@ -6343,6 +6504,7 @@ function Invoke-ClarkISOModify {
         . ([scriptblock]::Create($dismountHeartbeatDef))
         . ([scriptblock]::Create($getLogDef))
         . ([scriptblock]::Create($logCoreDef))
+        foreach ($def in $clarkIsoWorkerFuncDefs) { . ([scriptblock]::Create($def)) }
         function Write-Win11ISOLog {
             param([string]$Message)
             $ts = (Get-Date).ToString("HH:mm:ss")
@@ -6383,11 +6545,20 @@ function Invoke-ClarkISOModify {
             $sync["Form"].Dispatcher.Invoke([System.Action]{
                 $sync["WPFWin11ISOSelectSection"].Visibility = "Collapsed"
                 $sync["WPFWin11ISOMountSection"].Visibility  = "Collapsed"
-                $sync["WPFWin11ISOModifySection"].Visibility = "Collapsed"
             })
 
             Log "Global log file: $(Get-Win11ISOLogFilePath)"
             Log "Creating working directory: $workDir"
+
+            $workDrive = [System.IO.Path]::GetPathRoot($workDir)
+            $driveInfo = [System.IO.DriveInfo]::new($workDrive)
+            $freeGB    = [Math]::Round($driveInfo.AvailableFreeSpace / 1GB, 1)
+            $minFreeGB = 20
+            Log "Disk space check: $freeGB GB free on $workDrive (minimum: $minFreeGB GB)."
+            if ($freeGB -lt $minFreeGB) {
+                throw "Insufficient disk space on $workDrive. The ISO build needs at least $minFreeGB GB free, but only $freeGB GB is available. Free up space and try again."
+            }
+
             $isoContents = Join-Path $workDir "iso_contents"
             $mountDir    = Join-Path $workDir "wim_mount"
             New-Item -ItemType Directory -Path $isoContents, $mountDir -Force | Out-Null
@@ -6395,12 +6566,18 @@ function Invoke-ClarkISOModify {
 
             Log "Copying ISO contents from $driveLetter to $isoContents..."
             & robocopy $driveLetter $isoContents /E /NFL /NDL /NJH /NJS | Out-Null
-            Log "ISO contents copied."
+            if ($LASTEXITCODE -ge 8) {
+                throw "Robocopy failed with exit code $LASTEXITCODE while copying ISO contents. The copy may be incomplete or corrupted."
+            }
+            Log "ISO contents copied (robocopy exit code: $LASTEXITCODE)."
             if ($toolsRoot) {
                 try {
                     Copy-ClarkAsysIsoPayload -IsoContentsDir $isoContents -ToolsRoot $toolsRoot
                     Log "ASYS payload copied to $(Join-Path $isoContents 'asys') (setup + platform-drivers)."
                 } catch {
+                    if ($fullDeploy) {
+                        throw "Failed to copy ASYS payload (required for Full ASYS Deployment mode): $_"
+                    }
                     Log "Warning: failed to copy ASYS payload: $_"
                 }
             }
@@ -6414,7 +6591,7 @@ function Invoke-ClarkISOModify {
                 SetProgress "Reading editions from install.esd..." 18
                 Log "install.esd detected. Reading available editions..."
                 $esdEditions = Get-WindowsImage -ImagePath $localEsd
-                $esdTargets  = @($esdEditions | Where-Object { $_.ImageName -match "\\bHome Single Language\\b|\\bHome$|\\bPro$" } | Sort-Object ImageIndex)
+                $esdTargets  = @($esdEditions | Where-Object { $_.ImageName -match "\bHome Single Language\b|\bHome$|\bPro$" } | Sort-Object ImageIndex)
                 if ($esdTargets.Count -eq 0) { $esdTargets = @($esdEditions | Sort-Object ImageIndex) }
                 Log "Exporting $($esdTargets.Count) edition(s) from ESD to install.wim..."
                 $esdIdx = 0
@@ -6429,7 +6606,7 @@ function Invoke-ClarkISOModify {
             }
 
             # ?????? Determine target editions (Home, Home SL, Pro) in install.wim ????????????????????????
-            Set-ItemProperty -Path $localWim -Name IsReadOnly -Value $false
+            Set-ItemProperty -Path $localWim -Name IsReadOnly -Value $false -ErrorAction Stop
             Log "Reading editions from install.wim..."
             $allWimEditions    = @(Get-WindowsImage -ImagePath $localWim)
             # Match only exact target editions: Home, Home Single Language, Pro
@@ -6453,9 +6630,25 @@ function Invoke-ClarkISOModify {
                 }).Count -gt 0
             }
 
+            # ?????? Export drivers once (shared across all editions) ??????????????????????????????????????????????????????????????????
+            $sharedDriverExportPath = ""
+            if ($injectDrivers) {
+                Log "Exporting all drivers from running system (once, shared across editions)..."
+                $sharedDriverExportPath = Join-Path $workDir "Clark_DriverExport"
+                New-Item -Path $sharedDriverExportPath -ItemType Directory -Force | Out-Null
+                Export-WindowsDriver -Online -Destination $sharedDriverExportPath -ErrorAction Stop | Out-Null
+                $driverFileCount = @(Get-ChildItem -Path $sharedDriverExportPath -Recurse -File -ErrorAction SilentlyContinue).Count
+                if ($driverFileCount -eq 0) {
+                    Log "Warning: driver export produced no files ??? driver injection may be incomplete."
+                } else {
+                    Log "Driver export complete: $sharedDriverExportPath ($driverFileCount files)"
+                }
+            }
+
             # ?????? Apply ASYS modifications to each edition ??????????????????????????????????????????????????????????????????????????????????????????
             $edIdx = 0
             foreach ($edition in $targetWimEditions) {
+                Stop-ClarkIsoModifyIfRequested -Sync $sync
                 $edIdx++
                 $pctStart = [int](25 + (($edIdx - 1) / $editionCount) * 50)
                 $pctEnd   = [int](25 + ($edIdx / $editionCount) * 50)
@@ -6463,8 +6656,13 @@ function Invoke-ClarkISOModify {
                 # Defensive cleanup in case a previous iteration left the mount active.
                 if (Test-MountPathActive -Path $mountDir) {
                     Log "Warning: stale mount detected at $mountDir. Discarding before next mount..."
-                    Dismount-WindowsImage -Path $mountDir -Discard -ErrorAction SilentlyContinue | Out-Null
+                    Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
                     Start-Sleep -Seconds 1
+                } elseif (Test-Path $mountDir) {
+                    if (@(Get-ChildItem -Path $mountDir -Force -ErrorAction SilentlyContinue).Count -gt 0) {
+                        Log "Warning: orphan wim_mount folder contents - clearing..."
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
+                    }
                 }
 
                 SetProgress "[$edIdx/$editionCount] Mounting: $($edition.ImageName)..." $pctStart
@@ -6476,12 +6674,16 @@ function Invoke-ClarkISOModify {
                 Log "Applying ASYS modifications..."
                 # Only inject autounattend.xml to ISO root on the first pass (it's ISO-level, not per-edition)
                 $isoInjectDir = if ($edIdx -eq 1) { $isoContents } else { "" }
-                Invoke-ClarkISOScript -ScratchDir $mountDir -ISOContentsDir $isoInjectDir -AutoUnattendXml $autounattendContent -InjectCurrentSystemDrivers $injectDrivers -Log { param($m) Log $m }
+                Invoke-ClarkISOScript -ScratchDir $mountDir -ISOContentsDir $isoInjectDir -AutoUnattendXml $autounattendContent -InjectCurrentSystemDrivers $injectDrivers -DriverExportPath $sharedDriverExportPath -Log { param($m) Log $m }
 
                 SetProgress "[$edIdx/$editionCount] WinSxS cleanup: $($edition.ImageName)..." ([int]($pctStart + ($pctEnd - $pctStart) * 0.65))
                 Log "Running DISM component store cleanup (/ResetBase)..."
                 & dism /English "/image:$mountDir" /Cleanup-Image /StartComponentCleanup /ResetBase | ForEach-Object { Log $_ }
-                Log "Component store cleanup complete."
+                if ($LASTEXITCODE -ne 0) {
+                    Log "Warning: DISM /ResetBase exited with code $LASTEXITCODE for '$($edition.ImageName)'. The image may retain superseded components."
+                } else {
+                    Log "Component store cleanup complete."
+                }
 
                 SetProgress "[$edIdx/$editionCount] Saving: $($edition.ImageName)..." ([int]($pctStart + ($pctEnd - $pctStart) * 0.9))
                 Log "Dismounting and saving install.wim (this takes several minutes)..."
@@ -6517,14 +6719,30 @@ function Invoke-ClarkISOModify {
             $finalEditions  = @(Get-WindowsImage -ImagePath $localWimStrip | Where-Object {
                 $_.ImageName -match "\bHome Single Language\b|\bHome$|\bPro$"
             } | Sort-Object ImageIndex)
-            foreach ($fe in $finalEditions) {
-                Log "  Exporting to stripped WIM: $($fe.ImageName)..."
-                Export-WindowsImage -SourceImagePath $localWimStrip -SourceIndex $fe.ImageIndex `
-                    -DestinationImagePath $strippedWim -ErrorAction Stop | Out-Null
+            if ($finalEditions.Count -eq 0) {
+                Log "Warning: no Home/Pro editions matched for stripping - keeping original install.wim intact."
+            } else {
+                foreach ($fe in $finalEditions) {
+                    Log "  Exporting to stripped WIM: $($fe.ImageName)..."
+                    Export-WindowsImage -SourceImagePath $localWimStrip -SourceIndex $fe.ImageIndex `
+                        -DestinationImagePath $strippedWim -ErrorAction Stop | Out-Null
+                }
+                if (-not (Test-Path $strippedWim)) {
+                    throw "Stripped WIM export produced no output file. Aborting to protect original install.wim."
+                }
+                $strippedSize = (Get-Item $strippedWim).Length
+                if ($strippedSize -lt 1MB) {
+                    throw "Stripped WIM is suspiciously small ($([Math]::Round($strippedSize / 1KB)) KB). Aborting to protect original install.wim."
+                }
+                try {
+                    Get-WindowsImage -ImagePath $strippedWim -ErrorAction Stop | Out-Null
+                } catch {
+                    throw "Stripped WIM failed integrity check: $($_.Exception.Message). Original install.wim preserved."
+                }
+                Remove-Item $localWimStrip -Force
+                Rename-Item $strippedWim $localWimStrip
+                Log "Strip complete. Final WIM: $(($finalEditions | ForEach-Object { $_.ImageName }) -join ", ")"
             }
-            Remove-Item $localWimStrip -Force
-            Rename-Item $strippedWim $localWimStrip
-            Log "Strip complete. Final WIM: $(($finalEditions | ForEach-Object { $_.ImageName }) -join ", ")"
 
             if ($fullDeploy) {
                 Log "Injecting OEM folder (Full ASYS Deployment mode)..."
@@ -6542,7 +6760,11 @@ function Invoke-ClarkISOModify {
 
             SetProgress "Dismounting source ISO..." 80
             Log "Dismounting original ISO..."
-            Dismount-DiskImage -ImagePath $isoPath | Out-Null
+            try {
+                Dismount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null
+            } catch {
+                Log "Warning: could not dismount source ISO: $($_.Exception.Message). It may remain mounted until the next reboot."
+            }
 
             $sync["Win11ISOWorkDir"]           = $workDir
             $sync["Win11ISOContentsDir"]       = $isoContents
@@ -6555,15 +6777,33 @@ function Invoke-ClarkISOModify {
                 $sync["WPFWin11ISOOutputSection"].Visibility = "Visible"
             })
         } catch {
-            Log "ERROR during modification: $($_.Exception.Message)"
-            Log "ERROR details: $($_ | Out-String)"
+            if ($_.Exception.Message -match 'stopped by user') {
+                Log "ISO modification stopped by user."
+            } else {
+                Log "ERROR during modification: $($_.Exception.Message)"
+                Log "ERROR details: $($_ | Out-String)"
+                $sync["__isoLastErrorMessage"] = "$($_.Exception.Message)"
+                $sync["Form"].Dispatcher.Invoke([System.Action]{
+                    $m = [string]$sync["__isoLastErrorMessage"]
+                    [System.Windows.MessageBox]::Show(
+                        "An error occurred during install.wim modification:`n`n$m",
+                        "Modification Error", "OK", "Error")
+                })
+            }
 
             try {
                 if (Test-Path $mountDir) {
-                    $mountedImages = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $mountDir }
+                    $mountDirNorm = [System.IO.Path]::GetFullPath($mountDir).TrimEnd('\')
+                    $mountedImages = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue | Where-Object {
+                        try { [System.IO.Path]::GetFullPath($_.Path).TrimEnd('\') -ieq $mountDirNorm } catch { $false }
+                    }
                     if ($mountedImages) {
-                        Log "Cleaning up: dismounting install.wim (discarding changes)..."
-                        Dismount-WindowsImage -Path $mountDir -Discard -ErrorAction SilentlyContinue | Out-Null
+                        foreach ($img in $mountedImages) {
+                            Log "Cleaning up: dismounting install.wim (discarding changes)..."
+                            Clear-ClarkIsoWimMount -MountPath $img.Path -Discard -Log { param($m) Log $m } | Out-Null
+                        }
+                    } elseif (Test-Path $mountDir) {
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
                     }
                 }
             } catch { Log "Warning: could not dismount install.wim during cleanup: $_" }
@@ -6583,18 +6823,12 @@ function Invoke-ClarkISOModify {
                 }
             } catch { Log "Warning: could not remove temp directory during cleanup: $_" }
 
-            $sync["__isoLastErrorMessage"] = "$($_.Exception.Message)"
-            $sync["Form"].Dispatcher.Invoke([System.Action]{
-                $m = [string]$sync["__isoLastErrorMessage"]
-                [System.Windows.MessageBox]::Show(
-                    "An error occurred during install.wim modification:`n`n$m",
-                    "Modification Error", "OK", "Error")
-            })
         } finally {
             Start-Sleep -Milliseconds 800
             $sync["Win11ISOModifying"] = $false
             $sync.ProcessRunning = $false
             $sync["Form"].Dispatcher.Invoke([System.Action]{
+                Set-ClarkIsoModifyControlState -Sync $sync -IsRunning $false
                 $sync.progressBarTextBlock.Text    = ""
                 $sync.progressBarTextBlock.ToolTip = ""
                 $sync.ProgressBar.Value            = 0
@@ -6654,8 +6888,9 @@ function Invoke-ClarkISOCheckExistingWork {
 
     $staleMountDir = Join-Path $existingWorkDir.FullName "wim_mount"
     if ((Test-Path $staleMountDir) -and @(Get-ChildItem -Path $staleMountDir -Force -ErrorAction SilentlyContinue).Count) {
-        Write-Win11ISOLog "Incomplete modification detected (wim_mount still present). Use Clean & Reset before building again."
-        return
+        if (Invoke-ClarkISOCheckExistingWorkMountCleanup -WorkDir $existingWorkDir.FullName -Log { param($m) Write-Win11ISOLog $m }) {
+            return
+        }
     }
 
     $sync["Win11ISOWorkDir"]     = $existingWorkDir.FullName
@@ -6690,6 +6925,7 @@ function Invoke-ClarkISOCleanAndReset {
 
     $getLogDefClean  = "function Get-Win11ISOLogFilePath {`n" + ${function:Get-Win11ISOLogFilePath}.ToString() + "`n}"
     $logCoreDefClean = "function Write-Win11ISOLogCore {`n" + ${function:Write-Win11ISOLogCore}.ToString() + "`n}"
+    $clarkIsoWorkerFuncDefsClean = @(Get-ClarkIsoWorkerFunctionDefinitions)
 
     $runspace = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
     $runspace.ApartmentState = "STA"
@@ -6699,12 +6935,14 @@ function Invoke-ClarkISOCleanAndReset {
     $runspace.SessionStateProxy.SetVariable("workDir",      $workDir)
     $runspace.SessionStateProxy.SetVariable("getLogDef",    $getLogDefClean)
     $runspace.SessionStateProxy.SetVariable("logCoreDef",   $logCoreDefClean)
+    $runspace.SessionStateProxy.SetVariable("clarkIsoWorkerFuncDefs", $clarkIsoWorkerFuncDefsClean)
 
     $script = [Management.Automation.PowerShell]::Create()
     $script.Runspace = $runspace
     $script.AddScript({
         . ([scriptblock]::Create($getLogDef))
         . ([scriptblock]::Create($logCoreDef))
+        foreach ($def in $clarkIsoWorkerFuncDefs) { . ([scriptblock]::Create($def)) }
 
         function Log($msg) {
             $ts = (Get-Date).ToString("HH:mm:ss")
@@ -6747,17 +6985,19 @@ function Invoke-ClarkISOCleanAndReset {
                         foreach ($img in $mountedImages) {
                             Log "Dismounting WIM at: $($img.Path) (discarding changes)..."
                             SetProgress "Dismounting WIM image..." 3
-                            Dismount-WindowsImage -Path $img.Path -Discard -ErrorAction Stop | Out-Null
+                            Clear-ClarkIsoWimMount -MountPath $img.Path -Discard -Log { param($m) Log $m } | Out-Null
                             Log "WIM dismounted successfully."
                         }
                     } elseif (Test-Path $mountDir) {
-                        Log "No mounted WIM reported by Get-WindowsImage. Running DISM /Cleanup-Wim as a precaution..."
-                        SetProgress "Running DISM cleanup..." 3
-                        & dism /English /Cleanup-Wim 2>&1 | ForEach-Object { Log $_ }
+                        Log "Clearing orphan wim_mount folder..."
+                        SetProgress "Clearing wim_mount..." 3
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
                     }
                 } catch {
-                    Log "Warning: could not dismount WIM cleanly. Attempting DISM /Cleanup-Wim fallback: $_"
-                    try { & dism /English /Cleanup-Wim 2>&1 | ForEach-Object { Log $_ } } catch { Log "Warning: DISM /Cleanup-Wim also failed: $_" }
+                    Log "Warning: could not clear WIM mount cleanly: $_"
+                    if (Test-Path $mountDir) {
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
+                    }
                 }
             }
 
@@ -6838,7 +7078,8 @@ function Invoke-ClarkISOCleanAndReset {
         }
     }) | Out-Null
 
-    $script.BeginInvoke() | Out-Null
+    $sync["_isoCleanPowerShell"] = $script
+    $sync["_isoCleanAsyncResult"] = $script.BeginInvoke()
 }
 
 function Invoke-ClarkISOExport {
@@ -6977,7 +7218,21 @@ function Invoke-ClarkISOExport {
             Write-Win11ISOLog "Exporting to ISO: $outputISO"
             SetProgress "Building ISO..." 10
 
-            $bootData    = "2#p0,e,b`"$contentsDir\boot\etfsboot.com`"#pEF,e,b`"$contentsDir\efi\microsoft\boot\efisys.bin`""
+            $biosBootFile = Join-Path $contentsDir "boot\etfsboot.com"
+            if (-not (Test-Path $biosBootFile)) {
+                throw "BIOS boot file not found: $biosBootFile. The ISO contents may be incomplete."
+            }
+            $efiBootFile = Join-Path $contentsDir "efi\microsoft\boot\efisys.bin"
+            if (-not (Test-Path $efiBootFile)) {
+                $efiBootFallback = Join-Path $contentsDir "efi\microsoft\boot\efisys_noprompt.bin"
+                if (Test-Path $efiBootFallback) {
+                    Write-Win11ISOLog "efisys.bin not found; using efisys_noprompt.bin as fallback."
+                    $efiBootFile = $efiBootFallback
+                } else {
+                    throw "EFI boot file not found: neither efisys.bin nor efisys_noprompt.bin exists under $contentsDir\efi\microsoft\boot\."
+                }
+            }
+            $bootData    = "2#p0,e,b`"$biosBootFile`"#pEF,e,b`"$efiBootFile`""
             $oscdimgArgs = @("-m", "-o", "-u2", "-udfver102", "-bootdata:$bootData", "-l`"ASYS_MODIFIED`"", "`"$contentsDir`"", "`"$outputISO`"")
 
             Write-Win11ISOLog "Running oscdimg..."
@@ -7011,6 +7266,20 @@ function Invoke-ClarkISOExport {
             if ($proc.ExitCode -eq 0) {
                 SetProgress "ISO exported" 100
                 Write-Win11ISOLog "ISO exported successfully: $outputISO"
+
+                $exportWorkDir = $sync["Win11ISOWorkDir"]
+                if ($exportWorkDir -and (Test-Path $exportWorkDir)) {
+                    Write-Win11ISOLog "Cleaning up working directory: $exportWorkDir"
+                    try {
+                        Remove-Item -Path $exportWorkDir -Recurse -Force -ErrorAction Stop
+                        $sync["Win11ISOWorkDir"]     = $null
+                        $sync["Win11ISOContentsDir"] = $null
+                        Write-Win11ISOLog "Working directory cleaned successfully."
+                    } catch {
+                        Write-Win11ISOLog "Warning: could not auto-clean working directory: $($_.Exception.Message)"
+                    }
+                }
+
                 $sync["Form"].Dispatcher.Invoke([System.Action]{
                     [System.Windows.MessageBox]::Show("ISO exported successfully!`n`n$outputISO", "Export Complete", "OK", "Info")
                 })
@@ -7064,6 +7333,483 @@ function Invoke-ClarkISOExport {
     }
 }
 
+#Requires -Version 5.1
+# Clark ISO build: WIM cleanup, ASYS payload, modify stop, work-dir resolution.
+# Loaded after Invoke-ClarkISO.ps1 by Compile.ps1 (overrides orphan-mount repair).
+
+function Test-ClarkIsoRunningElevated {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $p = New-Object Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Stop-ClarkIsoMountHolderProcesses {
+    param([scriptblock]$Log = { param($m) Write-Output $m })
+    $mine = $PID
+    $stopped = 0
+    foreach ($proc in @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue)) {
+        if ($proc.ProcessId -eq $mine) { continue }
+        $cmd = [string]$proc.CommandLine
+        if ($cmd -notmatch 'A-SYS_clark|ASYS_WinISO|Invoke-ClarkISO|wim_mount') { continue }
+        & $Log "Stopping Clark/ISO PowerShell PID $($proc.ProcessId)..."
+        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+        $stopped++
+    }
+    if ($stopped -gt 0) {
+        & $Log "Stopped $stopped process(es). Waiting for file handles to release..."
+        Start-Sleep -Seconds 5
+    }
+}
+
+function Invoke-ClarkIsoDismExeUnmount {
+    param(
+        [Parameter(Mandatory)][string]$MountPath,
+        [switch]$Discard,
+        [scriptblock]$Log = { param($m) Write-Output $m }
+    )
+    $mountPathFull = ($MountPath -replace '/', '\').TrimEnd('\')
+    $dismArg = if ($Discard) { '/Discard' } else { '/Commit' }
+    & $Log "Running: dism.exe /Unmount-Image /MountDir:$mountPathFull $dismArg"
+    try {
+        $proc = Start-Process -FilePath 'dism.exe' -ArgumentList @(
+            '/English', '/Unmount-Image', "/MountDir:$mountPathFull", $dismArg
+        ) -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+        if ($proc.ExitCode -eq 0) {
+            & $Log 'DISM.exe unmount succeeded.'
+            return $true
+        }
+        & $Log "DISM.exe exit code: $($proc.ExitCode)"
+    } catch {
+        & $Log "DISM.exe failed: $($_.Exception.Message)"
+    }
+    return $false
+}
+
+function Dismount-AllClarkIsoMountedImages {
+    param(
+        [scriptblock]$Log = { param($m) Write-Output $m },
+        [switch]$Discard
+    )
+    $ok = $true
+    foreach ($img in @(Get-ClarkIsoMountedImages)) {
+        try {
+            $p = [System.IO.Path]::GetFullPath($img.Path).TrimEnd('\')
+            if ($p -notmatch 'ASYS_WinISO|ASYS_Win11ISO') { continue }
+            if (-not (Invoke-ClarkIsoDismExeUnmount -MountPath $p -Discard:$Discard -Log $Log)) { $ok = $false }
+        } catch {
+            & $Log "Warning: error processing mounted image: $($_.Exception.Message)"
+            $ok = $false
+        }
+    }
+    return $ok
+}
+
+function Register-ClarkIsoDeleteOnReboot {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [scriptblock]$Log = { param($m) Write-Output $m }
+    )
+    if (-not (Test-ClarkIsoRunningElevated)) { return $false }
+    if (-not (Test-Path -LiteralPath $Path)) { return $true }
+
+    if (-not ([System.Management.Automation.PSTypeName]'ClarkNativeDelete').Type) {
+        Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class ClarkNativeDelete {
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool MoveFileEx(string lpExistingFileName, string lpNewFileName, int dwFlags);
+    public const int MOVEFILE_DELAY_UNTIL_REBOOT = 4;
+}
+'@
+    }
+
+    $items = @(Get-ChildItem -LiteralPath $Path -Force -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object { $_.FullName.Length } -Descending)
+    $anyFailed = $false
+    foreach ($item in $items) {
+        if (-not [ClarkNativeDelete]::MoveFileEx($item.FullName, $null, [ClarkNativeDelete]::MOVEFILE_DELAY_UNTIL_REBOOT)) {
+            & $Log "Warning: MoveFileEx failed for child: $($item.FullName)"
+            $anyFailed = $true
+        }
+    }
+    if (-not [ClarkNativeDelete]::MoveFileEx($Path, $null, [ClarkNativeDelete]::MOVEFILE_DELAY_UNTIL_REBOOT)) {
+        & $Log "Warning: MoveFileEx failed for parent: $Path"
+        $anyFailed = $true
+    }
+    if ($anyFailed) {
+        & $Log "Warning: some items could not be scheduled for reboot deletion under: $Path"
+    }
+    & $Log "Scheduled delete on next reboot: $Path"
+    return $true
+}
+
+function Grant-ClarkIsoPathFullControl {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [scriptblock]$Log = { param($m) }
+    )
+    if (-not (Test-ClarkIsoRunningElevated)) { return }
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    try {
+        & takeown.exe /F $Path /R /D Y 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { & $Log "Warning: takeown exited with code $LASTEXITCODE for: $Path" }
+        & icacls.exe $Path /grant "${env:USERNAME}:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { & $Log "Warning: icacls exited with code $LASTEXITCODE for: $Path" }
+    } catch {
+        & $Log "Warning: Grant-ClarkIsoPathFullControl failed for ${Path}: $($_.Exception.Message)"
+    }
+}
+
+function Get-ClarkIsoMountedImages {
+    try { return @(Get-WindowsImage -Mounted -ErrorAction Stop) } catch { return @() }
+}
+
+function Get-ClarkIsoMountedImageForPath {
+    param([Parameter(Mandatory)][string]$MountPath)
+    $target = [System.IO.Path]::GetFullPath($MountPath).TrimEnd('\')
+    foreach ($img in @(Get-ClarkIsoMountedImages)) {
+        try {
+            if ([System.IO.Path]::GetFullPath($img.Path).TrimEnd('\') -ieq $target) { return $img }
+        } catch { }
+    }
+    return $null
+}
+
+function Remove-ClarkIsoWimMountFolder {
+    param(
+        [Parameter(Mandatory)][string]$MountPath,
+        [scriptblock]$Log = { param($m) Write-Output $m }
+    )
+    $mountPathFull = [System.IO.Path]::GetFullPath($MountPath).TrimEnd('\')
+    if (-not (Test-Path -LiteralPath $mountPathFull)) { return $true }
+
+    if (Get-ClarkIsoMountedImageForPath -MountPath $mountPathFull) {
+        & $Log 'Cannot delete wim_mount while DISM still has it mounted.'
+        return $false
+    }
+
+    & $Log "Removing wim_mount folder: $mountPathFull"
+    Grant-ClarkIsoPathFullControl -Path $mountPathFull
+
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $mountPathFull -Recurse -Force -ErrorAction Stop
+            if (-not (Test-Path -LiteralPath $mountPathFull)) {
+                & $Log 'wim_mount folder removed.'
+                return $true
+            }
+        } catch {
+            & $Log "Delete attempt $attempt failed: $($_.Exception.Message)"
+            Grant-ClarkIsoPathFullControl -Path $mountPathFull
+            try {
+                $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', 'rd', '/s', '/q', "`"$mountPathFull`"") -Wait -PassThru -WindowStyle Hidden
+                if ($proc.ExitCode -eq 0 -and -not (Test-Path -LiteralPath $mountPathFull)) { return $true }
+            } catch { }
+            Start-Sleep -Seconds 3
+        }
+    }
+    return -not (Test-Path -LiteralPath $mountPathFull)
+}
+
+function Clear-ClarkIsoWimMount {
+    param(
+        [Parameter(Mandatory)][string]$MountPath,
+        [scriptblock]$Log = { param($m) Write-Output $m },
+        [switch]$Discard,
+        [switch]$StopHolderProcesses
+    )
+    $mountPathFull = [System.IO.Path]::GetFullPath($MountPath).TrimEnd('\')
+    if (-not (Test-Path -LiteralPath $mountPathFull)) { return $true }
+
+    try {
+        if ($StopHolderProcesses) {
+            Stop-ClarkIsoMountHolderProcesses -Log $Log
+        }
+
+        [void](Dismount-AllClarkIsoMountedImages -Log $Log -Discard:$Discard)
+
+        foreach ($attempt in 1..5) {
+            if (-not (Get-ClarkIsoMountedImageForPath -MountPath $mountPathFull)) { break }
+
+            & $Log "Dismount attempt $attempt of 5..."
+            if (Invoke-ClarkIsoDismExeUnmount -MountPath $mountPathFull -Discard:$Discard -Log $Log) { break }
+
+            try {
+                if ($Discard) {
+                    Dismount-WindowsImage -Path $mountPathFull -Discard -ErrorAction Stop | Out-Null
+                } else {
+                    Dismount-WindowsImage -Path $mountPathFull -Save -ErrorAction Stop | Out-Null
+                }
+                & $Log "WIM dismounted via cmdlet: $mountPathFull"
+                break
+            } catch {
+                & $Log "Cmdlet dismount failed: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 4
+            if (Test-ClarkIsoRunningElevated) {
+                try { & dism /English /Cleanup-Wim 2>&1 | Out-Null } catch { }
+            }
+        }
+
+        if (Get-ClarkIsoMountedImageForPath -MountPath $mountPathFull) {
+            & $Log 'DISM still reports this path as mounted. Close all Clark windows, then run Force-Clear again or reboot.'
+            return $false
+        }
+
+        $hasContent = @(Get-ChildItem -LiteralPath $mountPathFull -Force -ErrorAction SilentlyContinue).Count -gt 0
+        if (-not $hasContent) { return $true }
+        return Remove-ClarkIsoWimMountFolder -MountPath $mountPathFull -Log $Log
+    } catch {
+        & $Log "Error in Clear-ClarkIsoWimMount: $($_.Exception.Message)"
+        # Emergency dismount attempt to avoid orphaned WIM mount
+        try {
+            if (Get-ClarkIsoMountedImageForPath -MountPath $mountPathFull) {
+                & $Log "Emergency: attempting DISM dismount after unexpected error..."
+                Invoke-ClarkIsoDismExeUnmount -MountPath $mountPathFull -Discard -Log $Log | Out-Null
+            }
+        } catch { }
+        return $false
+    }
+}
+
+function Invoke-ClarkIsoForceClearWorkDir {
+    param(
+        [Parameter(Mandatory)][string]$WorkDir,
+        [scriptblock]$Log = { param($m) Write-Output $m },
+        [switch]$ScheduleRebootOnFailure
+    )
+
+    if (-not (Test-Path -LiteralPath $WorkDir)) {
+        & $Log 'Work directory already removed.'
+        return $true
+    }
+    if (-not (Test-ClarkIsoRunningElevated)) {
+        throw 'Run this script as Administrator.'
+    }
+
+    Stop-ClarkIsoMountHolderProcesses -Log $Log
+    $mountDir = Join-Path $WorkDir 'wim_mount'
+
+    if (Test-Path -LiteralPath $mountDir) {
+        & $Log "Clearing wim_mount under $WorkDir ..."
+        if (-not (Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log $Log -StopHolderProcesses)) {
+            & $Log 'Could not dismount wim_mount. Close all Clark windows and retry, or reboot then run this script again.'
+            if ($ScheduleRebootOnFailure) {
+                Register-ClarkIsoDeleteOnReboot -Path $WorkDir -Log $Log | Out-Null
+                & $Log 'Work directory scheduled for deletion on next reboot.'
+            }
+            return $false
+        }
+    }
+
+    if (Test-Path -LiteralPath $WorkDir) {
+        & $Log "Deleting work directory: $WorkDir"
+        Grant-ClarkIsoPathFullControl -Path $WorkDir
+        try {
+            Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction Stop
+        } catch {
+            & $Log "Delete failed: $($_.Exception.Message)"
+            if ($ScheduleRebootOnFailure) {
+                Register-ClarkIsoDeleteOnReboot -Path $WorkDir -Log $Log | Out-Null
+                & $Log 'Scheduled full work directory delete on next reboot.'
+                return $false
+            }
+            throw
+        }
+    }
+
+    if (Test-Path -LiteralPath $WorkDir) { return $false }
+    & $Log 'Cleanup complete.'
+    return $true
+}
+
+function Test-ClarkIsoWimMountDirDirty {
+    param([Parameter(Mandatory)][string]$WorkDir)
+    $mountDir = Join-Path $WorkDir 'wim_mount'
+    if (-not (Test-Path -LiteralPath $mountDir)) { return $false }
+    if (Get-ClarkIsoMountedImageForPath -MountPath $mountDir) { return $true }
+    return @(Get-ChildItem -LiteralPath $mountDir -Force -ErrorAction SilentlyContinue).Count -gt 0
+}
+
+function Resolve-ClarkIsoWorkDirectory {
+    param(
+        [scriptblock]$Log = { param($m) Write-Output $m },
+        [scriptblock]$GetCandidates = { @() }
+    )
+    $existing = @(& $GetCandidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+    if (-not $existing) {
+        return (Join-Path $env:TEMP "ASYS_WinISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')")
+    }
+    $candidate = $existing.FullName
+    if (-not (Test-ClarkIsoWimMountDirDirty -WorkDir $candidate)) {
+        & $Log "Reusing existing temp directory: $candidate"
+        return $candidate
+    }
+    & $Log "Stale wim_mount in $candidate - attempting cleanup..."
+    $mountDir = Join-Path $candidate 'wim_mount'
+    $cleared = Clear-ClarkIsoWimMount -MountPath $mountDir -Log $Log -Discard
+    if ($cleared -and -not (Test-ClarkIsoWimMountDirDirty -WorkDir $candidate)) {
+        & $Log "Cleanup succeeded; reusing: $candidate"
+        return $candidate
+    }
+    $fresh = Join-Path $env:TEMP "ASYS_WinISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+    & $Log "Using new work directory (could not clear old wim_mount): $fresh"
+    return $fresh
+}
+
+function Reset-ClarkIsoModifyStop { param([hashtable]$Sync); if ($Sync) { $Sync['Win11ISOModifyStopRequested'] = $false } }
+function Test-ClarkIsoModifyStopRequested { param([hashtable]$Sync); return [bool]($Sync -and $Sync['Win11ISOModifyStopRequested']) }
+function Stop-ClarkIsoModifyIfRequested { param([hashtable]$Sync); if (Test-ClarkIsoModifyStopRequested -Sync $Sync) { throw 'ISO modification stopped by user.' } }
+
+function Invoke-ClarkISOModifyStop {
+    param([hashtable]$Sync = $sync)
+    if (-not $Sync['Win11ISOModifying']) { return }
+    $Sync['Win11ISOModifyStopRequested'] = $true
+    Write-Win11ISOLog 'Stop requested for ISO modification (stopping after current step)...'
+    if ($Sync['WPFWin11ISOModifyStopButton']) { $Sync['WPFWin11ISOModifyStopButton'].IsEnabled = $false }
+}
+
+function Register-ClarkIsoModifyStopUi {
+    param([hashtable]$Sync = $sync)
+    if (-not $Sync -or $Sync['WPFWin11ISOModifyStopButton']) { return }
+    $modifyBtn = $Sync['WPFWin11ISOModifyButton']
+    if (-not $modifyBtn) { return }
+
+    $stopBtn = New-Object System.Windows.Controls.Button
+    $stopBtn.Name = 'WPFWin11ISOModifyStopButton'
+    $stopBtn.Content = 'Stop build'
+    $stopBtn.Width = 100
+    $stopBtn.Height = 32
+    $stopBtn.Margin = New-Object System.Windows.Thickness(10, 0, 0, 0)
+    $stopBtn.Background = '#8b0000'
+    $stopBtn.Foreground = 'White'
+    $stopBtn.BorderBrush = '#a04040'
+    $stopBtn.IsEnabled = $false
+    $stopBtn.ToolTip = 'Stop the running install.wim modification'
+
+    $panel = $modifyBtn.Parent
+    if ($panel -is [System.Windows.Controls.Panel]) {
+        $idx = $panel.Children.IndexOf($modifyBtn)
+        if ($idx -lt 0) { $idx = $panel.Children.Count }
+        [void]$panel.Children.Insert($idx + 1, $stopBtn)
+    }
+    $Sync['WPFWin11ISOModifyStopButton'] = $stopBtn
+    [void]$stopBtn.Add_Click({ Invoke-ClarkISOModifyStop -Sync $sync })
+}
+
+function Set-ClarkIsoModifyControlState {
+    param([hashtable]$Sync = $sync, [bool]$IsRunning)
+    if ($Sync['WPFWin11ISOModifyButton']) { $Sync['WPFWin11ISOModifyButton'].IsEnabled = -not $IsRunning }
+    if ($Sync['WPFWin11ISOModifyStopButton']) { $Sync['WPFWin11ISOModifyStopButton'].IsEnabled = $IsRunning }
+}
+
+function Invoke-ClarkISOCheckExistingWorkMountCleanup {
+    param(
+        [Parameter(Mandatory)][string]$WorkDir,
+        [scriptblock]$Log = { param($m) Write-Output $m }
+    )
+    if (-not (Test-ClarkIsoWimMountDirDirty -WorkDir $WorkDir)) { return $false }
+    & $Log "Incomplete wim_mount under $WorkDir - attempting cleanup..."
+    $mountDir = Join-Path $WorkDir 'wim_mount'
+    $ok = Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log $Log
+    if ($ok -and -not (Test-ClarkIsoWimMountDirDirty -WorkDir $WorkDir)) {
+        & $Log 'wim_mount cleared.'
+        return $false
+    }
+    & $Log 'Incomplete modification detected (wim_mount still present). Use Clean and Reset or run scripts\Force-ClearClarkIsoWorkDir.ps1 as Administrator.'
+    return $true
+}
+
+function Invoke-ClarkISORepairOrphanedMountsCore {
+    param([scriptblock]$Log = { param($m) Write-Output $m })
+
+    Stop-ClarkIsoMountHolderProcesses -Log $Log
+    $orphanPaths = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($img in @(Get-ClarkIsoMountedImages)) {
+        try {
+            $p = [System.IO.Path]::GetFullPath($img.Path).TrimEnd('\')
+            if ($p -match 'ASYS_WinISO|ASYS_Win11ISO') { [void]$orphanPaths.Add($p) }
+        } catch { }
+    }
+    foreach ($dir in @(Get-ChildItem -Path (Join-Path $env:TEMP 'ASYS_WinISO*') -Directory -ErrorAction SilentlyContinue)) {
+        $m = Join-Path $dir.FullName 'wim_mount'
+        if (Test-Path -LiteralPath $m) { [void]$orphanPaths.Add([System.IO.Path]::GetFullPath($m).TrimEnd('\')) }
+    }
+    foreach ($dir in @(Get-ChildItem -Path (Join-Path $env:TEMP 'ASYS_Win11ISO*') -Directory -ErrorAction SilentlyContinue)) {
+        $m = Join-Path $dir.FullName 'wim_mount'
+        if (Test-Path -LiteralPath $m) { [void]$orphanPaths.Add([System.IO.Path]::GetFullPath($m).TrimEnd('\')) }
+    }
+    if ($orphanPaths.Count -eq 0) { return $false }
+
+    $incomplete = $false
+    foreach ($path in @($orphanPaths)) {
+        & $Log "Discarding orphaned mount: $path"
+        if (-not (Clear-ClarkIsoWimMount -MountPath $path -Discard -Log $Log)) { $incomplete = $true }
+    }
+    if (Test-ClarkIsoRunningElevated) {
+        try { & dism /English /Cleanup-Wim 2>&1 | ForEach-Object { & $Log $_ } } catch { }
+    }
+    foreach ($dir in @(Get-ChildItem -Path (Join-Path $env:TEMP 'ASYS_WinISO*') -Directory -ErrorAction SilentlyContinue)) {
+        if (Test-ClarkIsoWimMountDirDirty -WorkDir $dir.FullName) { $incomplete = $true }
+    }
+    if ($incomplete) {
+        & $Log 'Some wim_mount folders could not be fully cleared. Run scripts\Force-ClearClarkIsoWorkDir.ps1 as Administrator.'
+    } else {
+        & $Log 'Orphaned mount(s) discarded.'
+    }
+    return $incomplete
+}
+
+function Invoke-ClarkISORepairOrphanedMounts {
+    $orphans = @(Get-ClarkISOOrphanedMounts)
+    if ($orphans.Count -eq 0) { return $false }
+
+    $paths = ($orphans | ForEach-Object { $_.MountPath }) -join "`n"
+    $answer = [System.Windows.MessageBox]::Show(
+        @"
+An incomplete WIM mount was found from a previous session:
+
+$paths
+
+Discard the mount and uncommitted changes?
+"@,
+        'Incomplete ISO Build Detected', 'YesNo', 'Warning')
+
+    if ($answer -ne 'Yes') {
+        Write-Win11ISOLog 'Orphaned WIM mount left in place.'
+        return $true
+    }
+    return Invoke-ClarkISORepairOrphanedMountsCore -Log { param($m) Write-Win11ISOLog $m }
+}
+
+function Get-ClarkIsoWorkerFunctionDefinitions {
+    $names = @(
+        'Test-ClarkIsoRunningElevated',
+        'Grant-ClarkIsoPathFullControl',
+        'Stop-ClarkIsoMountHolderProcesses',
+        'Invoke-ClarkIsoDismExeUnmount',
+        'Get-ClarkIsoMountedImages',
+        'Get-ClarkIsoMountedImageForPath',
+        'Dismount-AllClarkIsoMountedImages',
+        'Remove-ClarkIsoWimMountFolder',
+        'Clear-ClarkIsoWimMount',
+        'Copy-ClarkAsysIsoPayload',
+        'Test-ClarkIsoModifyStopRequested',
+        'Stop-ClarkIsoModifyIfRequested'
+    )
+    $defs = New-Object System.Collections.Generic.List[string]
+    foreach ($name in $names) {
+        if (-not (Get-Command -Name $name -CommandType Function -ErrorAction SilentlyContinue)) {
+            Write-Warning "Get-ClarkIsoWorkerFunctionDefinitions: function '$name' not found ??? worker runspace may be incomplete."
+            continue
+        }
+        $body = (Get-Command $name).ScriptBlock.ToString()
+        $nl = [Environment]::NewLine
+        [void]$defs.Add('function ' + $name + ' {' + $nl + $body + $nl + '}')
+    }
+    return @($defs)
+}
 function Invoke-ClarkISOScript {
 
     <#
@@ -7178,6 +7924,8 @@ function Invoke-ClarkISOScript {
 
         [bool]$InjectCurrentSystemDrivers = $false,
 
+        [string]$DriverExportPath = "",
+
         [scriptblock]$Log = { param($m) Write-Output $m }
 
     )
@@ -7185,8 +7933,12 @@ function Invoke-ClarkISOScript {
 
 
     $adminSID   = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
-
-    $adminGroup = $adminSID.Translate([System.Security.Principal.NTAccount])
+    try {
+        $adminGroup = $adminSID.Translate([System.Security.Principal.NTAccount])
+    } catch {
+        $adminGroup = [System.Security.Principal.NTAccount]'BUILTIN\Administrators'
+        & $Log "Warning: SID translation failed, using fallback '$($adminGroup.Value)': $($_.Exception.Message)"
+    }
 
 
 
@@ -7196,9 +7948,11 @@ function Invoke-ClarkISOScript {
 
         try {
 
-            & reg add $path /v $name /t $type /d $value /f
+            & reg add $path /v $name /t $type /d $value /f 2>&1 | Out-Null
 
-            & $Log "Set registry value: $path\$name"
+            if ($LASTEXITCODE -ne 0) {
+                & $Log "Warning: reg add failed (exit $LASTEXITCODE): $path\$name"
+            }
 
         } catch {
 
@@ -7216,9 +7970,11 @@ function Invoke-ClarkISOScript {
 
         try {
 
-            & reg delete $path /f
+            & reg delete $path /f 2>&1 | Out-Null
 
-            & $Log "Removed registry key: $path"
+            if ($LASTEXITCODE -ne 0) {
+                & $Log "Warning: reg delete failed (exit $LASTEXITCODE): $path"
+            }
 
         } catch {
 
@@ -7237,6 +7993,10 @@ function Invoke-ClarkISOScript {
         & dism /English "/image:$MountPath" /Add-Driver "/Driver:$DriverDir" /Recurse 2>&1 |
 
             ForEach-Object { & $Logger "  dism[$Label]: $_" }
+
+        if ($LASTEXITCODE -ne 0) {
+            & $Logger "Warning: DISM /Add-Driver for '$Label' exited with code $LASTEXITCODE. Some drivers may not have been injected."
+        }
 
     }
 
@@ -7288,7 +8048,12 @@ function Invoke-ClarkISOScript {
 
 
 
-    $packages = & dism /English "/image:$ScratchDir" /Get-ProvisionedAppxPackages |
+    $dismAppxOutput = & dism /English "/image:$ScratchDir" /Get-ProvisionedAppxPackages 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        & $Log "Warning: DISM /Get-ProvisionedAppxPackages failed (exit code $LASTEXITCODE). AppX removal will be skipped."
+    }
+
+    $packages = $dismAppxOutput |
 
         ForEach-Object { if ($_ -match 'PackageName : (.*)') { $matches[1] } }
 
@@ -7334,9 +8099,17 @@ function Invoke-ClarkISOScript {
 
 
 
-    $packages | Where-Object { $pkg = $_; $packagePrefixes | Where-Object { $pkg -like "*$_*" } } |
-
-        ForEach-Object { & dism /English "/image:$ScratchDir" /Remove-ProvisionedAppxPackage "/PackageName:$_" }
+    $matchedPackages = @($packages | Where-Object { $pkg = $_; $packagePrefixes | Where-Object { $pkg -like "*$_*" } })
+    $appxRemoveFailures = 0
+    foreach ($appxPkg in $matchedPackages) {
+        & $Log "  Removing AppX: $appxPkg"
+        & dism /English "/image:$ScratchDir" /Remove-ProvisionedAppxPackage "/PackageName:$appxPkg" 2>&1 | ForEach-Object { & $Log "    $_" }
+        if ($LASTEXITCODE -ne 0) {
+            & $Log "  Warning: failed to remove $appxPkg (DISM exit code $LASTEXITCODE)."
+            $appxRemoveFailures++
+        }
+    }
+    & $Log "AppX removal complete: $($matchedPackages.Count - $appxRemoveFailures)/$($matchedPackages.Count) succeeded."
 
 
 
@@ -7344,17 +8117,29 @@ function Invoke-ClarkISOScript {
 
     if ($InjectCurrentSystemDrivers) {
 
-        & $Log "Exporting all drivers from running system..."
+        $driverExportRoot = $DriverExportPath
+        $ownedExport = $false
 
-        $driverExportRoot = Join-Path $env:TEMP "Clark_DriverExport_$(Get-Random)"
-
-        New-Item -Path $driverExportRoot -ItemType Directory -Force | Out-Null
+        if (-not $driverExportRoot -or -not (Test-Path $driverExportRoot)) {
+            & $Log "Exporting all drivers from running system..."
+            $driverExportRoot = Join-Path $env:TEMP "Clark_DriverExport_$(Get-Random)"
+            New-Item -Path $driverExportRoot -ItemType Directory -Force | Out-Null
+            try {
+                Export-WindowsDriver -Online -Destination $driverExportRoot -ErrorAction Stop | Out-Null
+            } catch {
+                & $Log "Error during driver export: $($_.Exception.Message). Cleaning up temp directory."
+                Remove-Item -Path $driverExportRoot -Recurse -Force -ErrorAction SilentlyContinue
+                throw
+            }
+            if (@(Get-ChildItem -Path $driverExportRoot -Recurse -File -ErrorAction SilentlyContinue).Count -eq 0) {
+                & $Log "Warning: driver export produced no files ??? injection may be incomplete."
+            }
+            $ownedExport = $true
+        } else {
+            & $Log "Reusing pre-exported driver cache: $driverExportRoot"
+        }
 
         try {
-
-            Export-WindowsDriver -Online -Destination $driverExportRoot | Out-Null
-
-
 
             & $Log "Injecting current system drivers into install.wim..."
 
@@ -7388,7 +8173,9 @@ function Invoke-ClarkISOScript {
 
         } finally {
 
-            Remove-Item -Path $driverExportRoot -Recurse -Force -ErrorAction SilentlyContinue
+            if ($ownedExport) {
+                Remove-Item -Path $driverExportRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
 
         }
 
@@ -7404,11 +8191,16 @@ function Invoke-ClarkISOScript {
 
     & $Log "Removing OneDrive..."
 
-    & takeown /f "$ScratchDir\Windows\System32\OneDriveSetup.exe" | Out-Null
-
-    & icacls    "$ScratchDir\Windows\System32\OneDriveSetup.exe" /grant "$($adminGroup.Value):(F)" /T /C | Out-Null
-
-    Remove-Item -Path "$ScratchDir\Windows\System32\OneDriveSetup.exe" -Force -ErrorAction SilentlyContinue
+    $onedriveExe = "$ScratchDir\Windows\System32\OneDriveSetup.exe"
+    if (Test-Path $onedriveExe) {
+        & takeown /f $onedriveExe 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { & $Log "Warning: takeown failed for OneDriveSetup.exe (exit $LASTEXITCODE)." }
+        & icacls $onedriveExe /grant "$($adminGroup.Value):(F)" /T /C 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { & $Log "Warning: icacls failed for OneDriveSetup.exe (exit $LASTEXITCODE)." }
+        Remove-Item -Path $onedriveExe -Force -ErrorAction SilentlyContinue
+    } else {
+        & $Log "OneDriveSetup.exe not present ??? skipping."
+    }
 
 
 
@@ -7416,17 +8208,35 @@ function Invoke-ClarkISOScript {
 
     & $Log "Loading offline registry hives..."
 
-    reg load HKLM\zCOMPONENTS "$ScratchDir\Windows\System32\config\COMPONENTS"
+    $regHiveMap = @(
+        @{ Key = 'zCOMPONENTS'; File = "$ScratchDir\Windows\System32\config\COMPONENTS" }
+        @{ Key = 'zDEFAULT';    File = "$ScratchDir\Windows\System32\config\default" }
+        @{ Key = 'zNTUSER';     File = "$ScratchDir\Users\Default\ntuser.dat" }
+        @{ Key = 'zSOFTWARE';   File = "$ScratchDir\Windows\System32\config\SOFTWARE" }
+        @{ Key = 'zSYSTEM';     File = "$ScratchDir\Windows\System32\config\SYSTEM" }
+    )
+    $regLoadFailed = $false
+    foreach ($hive in $regHiveMap) {
+        if (-not (Test-Path $hive.File)) {
+            & $Log "ERROR: Registry hive file not found: $($hive.File). Aborting registry tweaks."
+            $regLoadFailed = $true
+            break
+        }
+        reg load "HKLM\$($hive.Key)" $hive.File 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            & $Log "ERROR: Failed to load HKLM\$($hive.Key) from $($hive.File) (exit code $LASTEXITCODE). Aborting registry tweaks."
+            $regLoadFailed = $true
+            break
+        }
+        & $Log "Loaded HKLM\$($hive.Key)"
+    }
 
-    reg load HKLM\zDEFAULT    "$ScratchDir\Windows\System32\config\default"
-
-    reg load HKLM\zNTUSER     "$ScratchDir\Users\Default\ntuser.dat"
-
-    reg load HKLM\zSOFTWARE   "$ScratchDir\Windows\System32\config\SOFTWARE"
-
-    reg load HKLM\zSYSTEM     "$ScratchDir\Windows\System32\config\SYSTEM"
-
-
+    if ($regLoadFailed) {
+        & $Log "WARNING: Skipping registry tweaks due to hive load failure. Unloading any hives that were loaded..."
+        foreach ($h in $regHiveMap) {
+            reg unload "HKLM\$($h.Key)" 2>&1 | Out-Null
+        }
+    } else {
 
     & $Log "Bypassing system requirements..."
 
@@ -7536,7 +8346,12 @@ function Invoke-ClarkISOScript {
 
                     $relPath  = $absPath -replace '^[A-Za-z]:[/\\]', ''
 
-                    $destPath = Join-Path $ScratchDir $relPath
+                    $destPath = [System.IO.Path]::GetFullPath((Join-Path $ScratchDir $relPath))
+                    $scratchNorm = [System.IO.Path]::GetFullPath($ScratchDir).TrimEnd('\')
+                    if (-not $destPath.StartsWith($scratchNorm + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+                        & $Log "WARNING: Skipping autounattend File node with path traversal outside mount directory: $absPath -> $destPath"
+                        continue
+                    }
 
                     New-Item -Path (Split-Path $destPath -Parent) -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
 
@@ -7566,6 +8381,8 @@ function Invoke-ClarkISOScript {
 
             }
 
+            $autoUnattendXmlParsedOk = $true
+
         } catch {
 
             & $Log "Warning: could not pre-stage setup scripts from autounattend.xml: $_"
@@ -7574,13 +8391,17 @@ function Invoke-ClarkISOScript {
 
 
 
-        if ($ISOContentsDir -and (Test-Path $ISOContentsDir)) {
+        if ($autoUnattendXmlParsedOk -and $ISOContentsDir -and (Test-Path $ISOContentsDir)) {
 
             $isoDest = Join-Path $ISOContentsDir "autounattend.xml"
 
             Set-Content -Path $isoDest -Value $normalizedAutoUnattendXml -Encoding UTF8 -Force
 
             & $Log "Written autounattend.xml to ISO root ($isoDest)."
+
+        } elseif (-not $autoUnattendXmlParsedOk -and $ISOContentsDir) {
+
+            & $Log "WARNING: Skipping autounattend.xml write to ISO root ??? XML parsing failed earlier."
 
         }
 
@@ -7674,21 +8495,29 @@ function Invoke-ClarkISOScript {
 
     Set-ISOScriptReg 'HKLM\zSOFTWARE\Policies\Microsoft\Windows\Windows Mail' 'PreventRun' 'REG_DWORD' '1'
 
-
-
     & $Log "Unloading offline registry hives..."
 
-    reg unload HKLM\zCOMPONENTS
+    [gc]::Collect()
+    [gc]::WaitForPendingFinalizers()
+    Start-Sleep -Milliseconds 500
 
-    reg unload HKLM\zDEFAULT
+    $hiveNames = @('zCOMPONENTS', 'zDEFAULT', 'zNTUSER', 'zSOFTWARE', 'zSYSTEM')
+    foreach ($hive in $hiveNames) {
+        $maxRetries = 3
+        for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+            reg unload "HKLM\$hive" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            & $Log "Warning: reg unload HKLM\$hive failed (attempt $attempt/$maxRetries, exit code $LASTEXITCODE)."
+            [gc]::Collect()
+            [gc]::WaitForPendingFinalizers()
+            Start-Sleep -Seconds (1 * $attempt)
+        }
+        if ($LASTEXITCODE -ne 0) {
+            & $Log "ERROR: Failed to unload HKLM\$hive after $maxRetries attempts. WIM save may fail or produce a corrupt image."
+        }
+    }
 
-    reg unload HKLM\zNTUSER
-
-    reg unload HKLM\zSOFTWARE
-
-    reg unload HKLM\zSYSTEM
-
-
+    } # end if (-not $regLoadFailed)
 
     # ?????? 5. Delete scheduled task definition files ???????????????????????????????????????????????????????????????????????????????????????
 
@@ -7728,7 +8557,16 @@ function Invoke-ClarkISORefreshUSBDrives {
 
     $combo    = $sync["WPFWin11ISOUSBDriveComboBox"]
 
-    $removable = @(Get-Disk | Where-Object { $_.BusType -eq "USB" } | Sort-Object Number)
+    try {
+        $removable = @(Get-Disk -ErrorAction Stop | Where-Object { $_.BusType -eq "USB" } | Sort-Object Number)
+    } catch {
+        Write-Win11ISOLog "Error enumerating USB drives: $($_.Exception.Message)"
+        $combo.Items.Clear()
+        $combo.Items.Add("Error detecting USB drives.")
+        $combo.SelectedIndex = 0
+        $sync["Win11ISOUSBDisks"] = @()
+        return
+    }
 
 
 
@@ -7886,6 +8724,8 @@ function Invoke-ClarkISOWriteUSB {
 
     $script.AddScript({
 
+        $ErrorActionPreference = 'Stop'
+
         . ([scriptblock]::Create($getLogDef))
 
         . ([scriptblock]::Create($logCoreDef))
@@ -7948,11 +8788,11 @@ function Invoke-ClarkISOWriteUSB {
 
         function Get-FreeDriveLetter {
 
-            $used = (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue).Name
+            $used = @([System.IO.DriveInfo]::GetDrives() | ForEach-Object { $_.Name[0] })
 
             foreach ($c in [char[]](68..90)) {
 
-                if ($used -notcontains [string]$c) { return $c }
+                if ($used -notcontains $c) { return $c }
 
             }
 
@@ -7977,6 +8817,7 @@ function Invoke-ClarkISOWriteUSB {
             Log "Running diskpart clean on Disk $diskNum..."
 
             $dpCleanOut = diskpart /s $dpFile1 2>&1
+            $dpCleanExitCode = $LASTEXITCODE
 
             $dpCleanOut | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
 
@@ -7996,10 +8837,17 @@ function Invoke-ClarkISOWriteUSB {
 
                 "select disk $diskNum`nclean`nexit" | Set-Content -Path $dpFile1b -Encoding ASCII
 
-                diskpart /s $dpFile1b 2>&1 | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
+                $dpCleanOut2 = diskpart /s $dpFile1b 2>&1
+                $dpCleanExitCode = $LASTEXITCODE
+
+                $dpCleanOut2 | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
 
                 Remove-Item $dpFile1b -Force -ErrorAction SilentlyContinue
 
+            }
+
+            if ($dpCleanExitCode -ne 0) {
+                throw "diskpart clean failed on Disk $diskNum (exit code $dpCleanExitCode). Check the log for details."
             }
 
 
@@ -8064,9 +8912,16 @@ function Invoke-ClarkISOWriteUSB {
 
             Log "Creating partitions on Disk $diskNum..."
 
-            diskpart /s $dpFile2 2>&1 | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
+            $dpPartOut = diskpart /s $dpFile2 2>&1
+            $dpPartExitCode = $LASTEXITCODE
+
+            $dpPartOut | Where-Object { $_ -match '\S' } | ForEach-Object { Log "  diskpart: $_" }
 
             Remove-Item $dpFile2 -Force -ErrorAction SilentlyContinue
+
+            if ($dpPartExitCode -ne 0) {
+                throw "diskpart partition creation failed on Disk $diskNum (exit code $dpPartExitCode). Check the log for details."
+            }
 
 
 
@@ -8108,7 +8963,7 @@ function Invoke-ClarkISOWriteUSB {
 
             Get-Partition -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber |
 
-                Format-Volume -FileSystem FAT32 -NewFileSystemLabel $volLabel -Force -Confirm:$false | Out-Null
+                Format-Volume -FileSystem FAT32 -NewFileSystemLabel $volLabel -Force -Confirm:$false -ErrorAction Stop | Out-Null
 
             Log "Partition $($winpePart.PartitionNumber) formatted as FAT32."
 
@@ -8122,13 +8977,13 @@ function Invoke-ClarkISOWriteUSB {
 
 
 
-            try { Remove-PartitionAccessPath -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -AccessPath "$($winpePart.DriveLetter):" -ErrorAction SilentlyContinue } catch {}
+            try { Remove-PartitionAccessPath -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -AccessPath "$($winpePart.DriveLetter):" -ErrorAction SilentlyContinue } catch { Log "Note: Remove-PartitionAccessPath: $_" }
 
             $usbLetter = Get-FreeDriveLetter
 
             if (-not $usbLetter) { throw "No free drive letters (D-Z) available to assign to the USB data partition." }
 
-            Set-Partition -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -NewDriveLetter $usbLetter
+            Set-Partition -DiskNumber $diskNum -PartitionNumber $winpePart.PartitionNumber -NewDriveLetter $usbLetter -ErrorAction Stop
 
             Log "Assigned drive letter $usbLetter to WINPE partition (Partition $($winpePart.PartitionNumber))."
 
@@ -8216,7 +9071,11 @@ function Invoke-ClarkISOWriteUSB {
 
                     New-Item -ItemType Directory -Path (Split-Path $splitDest) -Force | Out-Null
 
-                    Split-WindowsImage -ImagePath $installWim -SplitImagePath $splitDest -FileSize 3800 -CheckIntegrity
+                    Split-WindowsImage -ImagePath $installWim -SplitImagePath $splitDest -FileSize 3800 -CheckIntegrity -ErrorAction Stop
+
+                    if (-not (Test-Path $splitDest)) {
+                        throw "Split-WindowsImage did not produce expected output: $splitDest"
+                    }
 
                     Log "install.wim split complete."
 
@@ -8224,15 +9083,21 @@ function Invoke-ClarkISOWriteUSB {
 
                     & robocopy $contentsDir $usbDrive /E /XF install.wim /NFL /NDL /NJH /NJS
 
+                    if ($LASTEXITCODE -ge 8) { throw "Robocopy failed copying files to USB (exit code $LASTEXITCODE). The USB drive may be incomplete." }
+
                 } else {
 
                     & robocopy $contentsDir $usbDrive /E /NFL /NDL /NJH /NJS
+
+                    if ($LASTEXITCODE -ge 8) { throw "Robocopy failed copying files to USB (exit code $LASTEXITCODE). The USB drive may be incomplete." }
 
                 }
 
             } else {
 
                 & robocopy $contentsDir $usbDrive /E /NFL /NDL /NJH /NJS
+
+                if ($LASTEXITCODE -ge 8) { throw "Robocopy failed copying files to USB (exit code $LASTEXITCODE). The USB drive may be incomplete." }
 
             }
 
@@ -8276,17 +9141,24 @@ function Invoke-ClarkISOWriteUSB {
 
             Start-Sleep -Milliseconds 800
 
-            $sync["Form"].Dispatcher.Invoke([System.Action]{
+            try {
+                $f = $sync["Form"]
+                if ($f -and $f.IsLoaded) {
+                    $f.Dispatcher.Invoke([System.Action]{
 
-                $sync.progressBarTextBlock.Text    = ""
+                        $sync.progressBarTextBlock.Text    = ""
 
-                $sync.progressBarTextBlock.ToolTip = ""
+                        $sync.progressBarTextBlock.ToolTip = ""
 
-                $sync.ProgressBar.Value            = 0
+                        $sync.ProgressBar.Value            = 0
 
-                $sync["WPFWin11ISOWriteUSBButton"].IsEnabled = $true
+                        $sync["WPFWin11ISOWriteUSBButton"].IsEnabled = $true
 
-            })
+                    })
+                }
+            } catch {
+                # Form may have been closed during USB write ??? suppress dispatcher errors
+            }
 
         }
 
@@ -8294,7 +9166,8 @@ function Invoke-ClarkISOWriteUSB {
 
 
 
-    $script.BeginInvoke() | Out-Null
+    $sync["_isoUsbPowerShell"] = $script
+    $sync["_isoUsbAsyncResult"] = $script.BeginInvoke()
 
 }
 
@@ -25886,6 +26759,24 @@ $inputXML = @'
 
                                         Height="{DynamicResource ButtonHeight}"/>
 
+                                <Button Name="WPFWin11ISOModifyStopButton"
+
+                                        Content="Stop build"
+
+                                        HorizontalAlignment="Left"
+
+                                        Width="100" Padding="12,0"
+
+                                        Height="{DynamicResource ButtonHeight}"
+
+                                        Margin="10,8,0,0"
+
+                                        Background="#8b0000" Foreground="White"
+
+                                        IsEnabled="False"
+
+                                        ToolTip="Stop the running install.wim modification"/>
+
                             </StackPanel>
 
 
@@ -27792,6 +28683,7 @@ $sync["FontScalingApplyButton"].Add_Click({
 
 $sync["WPFTab5BT"].Add_Click({
 
+    Register-ClarkIsoModifyStopUi -Sync $sync
     $sync["Form"].Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{ Invoke-ClarkISOCheckExistingWork }) | Out-Null
 
 })
@@ -27881,6 +28773,16 @@ $sync["WPFWin11ISOModifyButton"].Add_Click({
     Write-Debug "WPFWin11ISOModifyButton clicked"
 
     Invoke-ClarkISOModify
+
+})
+
+
+
+$sync["WPFWin11ISOModifyStopButton"].Add_Click({
+
+    Write-Debug "WPFWin11ISOModifyStopButton clicked"
+
+    Invoke-ClarkISOModifyStop -Sync $sync
 
 })
 

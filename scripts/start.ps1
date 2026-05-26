@@ -145,11 +145,29 @@ try {
 }
 "@
         $encodedCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($bootstrapCommand))
-        Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-EncodedCommand', $encodedCommand) -Verb RunAs -ErrorAction Stop
+        try {
+            Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-EncodedCommand', $encodedCommand) -Verb RunAs -ErrorAction Stop
+        } catch {
+            Write-Host ""
+            Write-Host "clark requires Administrator privileges to run." -ForegroundColor Yellow
+            Write-Host "Please accept the UAC prompt, or right-click the script and select 'Run as administrator'." -ForegroundColor Yellow
+            Write-Host ""
+            if ($Host.Name -eq 'ConsoleHost') { Read-Host "Press Enter to close" | Out-Null }
+            exit 1
+        }
 
     } else {
 
-        Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-Command', $script) -Verb RunAs -ErrorAction Stop
+        try {
+            Start-Process -FilePath $powershellCmd -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-Command', $script) -Verb RunAs -ErrorAction Stop
+        } catch {
+            Write-Host ""
+            Write-Host "clark requires Administrator privileges to run." -ForegroundColor Yellow
+            Write-Host "Please accept the UAC prompt, or right-click the script and select 'Run as administrator'." -ForegroundColor Yellow
+            Write-Host ""
+            if ($Host.Name -eq 'ConsoleHost') { Read-Host "Press Enter to close" | Out-Null }
+            exit 1
+        }
 
     }
 

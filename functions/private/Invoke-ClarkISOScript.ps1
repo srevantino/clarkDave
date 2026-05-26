@@ -112,6 +112,8 @@ function Invoke-ClarkISOScript {
 
         [bool]$InjectCurrentSystemDrivers = $false,
 
+        [string]$DriverExportPath = "",
+
         [scriptblock]$Log = { param($m) Write-Output $m }
 
     )
@@ -119,8 +121,12 @@ function Invoke-ClarkISOScript {
 
 
     $adminSID   = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
-
-    $adminGroup = $adminSID.Translate([System.Security.Principal.NTAccount])
+    try {
+        $adminGroup = $adminSID.Translate([System.Security.Principal.NTAccount])
+    } catch {
+        $adminGroup = [System.Security.Principal.NTAccount]'BUILTIN\Administrators'
+        & $Log "Warning: SID translation failed, using fallback '$($adminGroup.Value)': $($_.Exception.Message)"
+    }
 
 
 
@@ -130,9 +136,11 @@ function Invoke-ClarkISOScript {
 
         try {
 
-            & reg add $path /v $name /t $type /d $value /f
+            & reg add $path /v $name /t $type /d $value /f 2>&1 | Out-Null
 
-            & $Log "Set registry value: $path\$name"
+            if ($LASTEXITCODE -ne 0) {
+                & $Log "Warning: reg add failed (exit $LASTEXITCODE): $path\$name"
+            }
 
         } catch {
 
@@ -150,9 +158,11 @@ function Invoke-ClarkISOScript {
 
         try {
 
-            & reg delete $path /f
+            & reg delete $path /f 2>&1 | Out-Null
 
-            & $Log "Removed registry key: $path"
+            if ($LASTEXITCODE -ne 0) {
+                & $Log "Warning: reg delete failed (exit $LASTEXITCODE): $path"
+            }
 
         } catch {
 
@@ -171,6 +181,10 @@ function Invoke-ClarkISOScript {
         & dism /English "/image:$MountPath" /Add-Driver "/Driver:$DriverDir" /Recurse 2>&1 |
 
             ForEach-Object { & $Logger "  dism[$Label]: $_" }
+
+        if ($LASTEXITCODE -ne 0) {
+            & $Logger "Warning: DISM /Add-Driver for '$Label' exited with code $LASTEXITCODE. Some drivers may not have been injected."
+        }
 
     }
 
@@ -222,7 +236,12 @@ function Invoke-ClarkISOScript {
 
 
 
-    $packages = & dism /English "/image:$ScratchDir" /Get-ProvisionedAppxPackages |
+    $dismAppxOutput = & dism /English "/image:$ScratchDir" /Get-ProvisionedAppxPackages 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        & $Log "Warning: DISM /Get-ProvisionedAppxPackages failed (exit code $LASTEXITCODE). AppX removal will be skipped."
+    }
+
+    $packages = $dismAppxOutput |
 
         ForEach-Object { if ($_ -match 'PackageName : (.*)') { $matches[1] } }
 
@@ -268,9 +287,17 @@ function Invoke-ClarkISOScript {
 
 
 
-    $packages | Where-Object { $pkg = $_; $packagePrefixes | Where-Object { $pkg -like "*$_*" } } |
-
-        ForEach-Object { & dism /English "/image:$ScratchDir" /Remove-ProvisionedAppxPackage "/PackageName:$_" }
+    $matchedPackages = @($packages | Where-Object { $pkg = $_; $packagePrefixes | Where-Object { $pkg -like "*$_*" } })
+    $appxRemoveFailures = 0
+    foreach ($appxPkg in $matchedPackages) {
+        & $Log "  Removing AppX: $appxPkg"
+        & dism /English "/image:$ScratchDir" /Remove-ProvisionedAppxPackage "/PackageName:$appxPkg" 2>&1 | ForEach-Object { & $Log "    $_" }
+        if ($LASTEXITCODE -ne 0) {
+            & $Log "  Warning: failed to remove $appxPkg (DISM exit code $LASTEXITCODE)."
+            $appxRemoveFailures++
+        }
+    }
+    & $Log "AppX removal complete: $($matchedPackages.Count - $appxRemoveFailures)/$($matchedPackages.Count) succeeded."
 
 
 
@@ -278,17 +305,29 @@ function Invoke-ClarkISOScript {
 
     if ($InjectCurrentSystemDrivers) {
 
-        & $Log "Exporting all drivers from running system..."
+        $driverExportRoot = $DriverExportPath
+        $ownedExport = $false
 
-        $driverExportRoot = Join-Path $env:TEMP "Clark_DriverExport_$(Get-Random)"
-
-        New-Item -Path $driverExportRoot -ItemType Directory -Force | Out-Null
+        if (-not $driverExportRoot -or -not (Test-Path $driverExportRoot)) {
+            & $Log "Exporting all drivers from running system..."
+            $driverExportRoot = Join-Path $env:TEMP "Clark_DriverExport_$(Get-Random)"
+            New-Item -Path $driverExportRoot -ItemType Directory -Force | Out-Null
+            try {
+                Export-WindowsDriver -Online -Destination $driverExportRoot -ErrorAction Stop | Out-Null
+            } catch {
+                & $Log "Error during driver export: $($_.Exception.Message). Cleaning up temp directory."
+                Remove-Item -Path $driverExportRoot -Recurse -Force -ErrorAction SilentlyContinue
+                throw
+            }
+            if (@(Get-ChildItem -Path $driverExportRoot -Recurse -File -ErrorAction SilentlyContinue).Count -eq 0) {
+                & $Log "Warning: driver export produced no files — injection may be incomplete."
+            }
+            $ownedExport = $true
+        } else {
+            & $Log "Reusing pre-exported driver cache: $driverExportRoot"
+        }
 
         try {
-
-            Export-WindowsDriver -Online -Destination $driverExportRoot | Out-Null
-
-
 
             & $Log "Injecting current system drivers into install.wim..."
 
@@ -322,7 +361,9 @@ function Invoke-ClarkISOScript {
 
         } finally {
 
-            Remove-Item -Path $driverExportRoot -Recurse -Force -ErrorAction SilentlyContinue
+            if ($ownedExport) {
+                Remove-Item -Path $driverExportRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
 
         }
 
@@ -338,11 +379,16 @@ function Invoke-ClarkISOScript {
 
     & $Log "Removing OneDrive..."
 
-    & takeown /f "$ScratchDir\Windows\System32\OneDriveSetup.exe" | Out-Null
-
-    & icacls    "$ScratchDir\Windows\System32\OneDriveSetup.exe" /grant "$($adminGroup.Value):(F)" /T /C | Out-Null
-
-    Remove-Item -Path "$ScratchDir\Windows\System32\OneDriveSetup.exe" -Force -ErrorAction SilentlyContinue
+    $onedriveExe = "$ScratchDir\Windows\System32\OneDriveSetup.exe"
+    if (Test-Path $onedriveExe) {
+        & takeown /f $onedriveExe 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { & $Log "Warning: takeown failed for OneDriveSetup.exe (exit $LASTEXITCODE)." }
+        & icacls $onedriveExe /grant "$($adminGroup.Value):(F)" /T /C 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { & $Log "Warning: icacls failed for OneDriveSetup.exe (exit $LASTEXITCODE)." }
+        Remove-Item -Path $onedriveExe -Force -ErrorAction SilentlyContinue
+    } else {
+        & $Log "OneDriveSetup.exe not present — skipping."
+    }
 
 
 
@@ -350,17 +396,35 @@ function Invoke-ClarkISOScript {
 
     & $Log "Loading offline registry hives..."
 
-    reg load HKLM\zCOMPONENTS "$ScratchDir\Windows\System32\config\COMPONENTS"
+    $regHiveMap = @(
+        @{ Key = 'zCOMPONENTS'; File = "$ScratchDir\Windows\System32\config\COMPONENTS" }
+        @{ Key = 'zDEFAULT';    File = "$ScratchDir\Windows\System32\config\default" }
+        @{ Key = 'zNTUSER';     File = "$ScratchDir\Users\Default\ntuser.dat" }
+        @{ Key = 'zSOFTWARE';   File = "$ScratchDir\Windows\System32\config\SOFTWARE" }
+        @{ Key = 'zSYSTEM';     File = "$ScratchDir\Windows\System32\config\SYSTEM" }
+    )
+    $regLoadFailed = $false
+    foreach ($hive in $regHiveMap) {
+        if (-not (Test-Path $hive.File)) {
+            & $Log "ERROR: Registry hive file not found: $($hive.File). Aborting registry tweaks."
+            $regLoadFailed = $true
+            break
+        }
+        reg load "HKLM\$($hive.Key)" $hive.File 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            & $Log "ERROR: Failed to load HKLM\$($hive.Key) from $($hive.File) (exit code $LASTEXITCODE). Aborting registry tweaks."
+            $regLoadFailed = $true
+            break
+        }
+        & $Log "Loaded HKLM\$($hive.Key)"
+    }
 
-    reg load HKLM\zDEFAULT    "$ScratchDir\Windows\System32\config\default"
-
-    reg load HKLM\zNTUSER     "$ScratchDir\Users\Default\ntuser.dat"
-
-    reg load HKLM\zSOFTWARE   "$ScratchDir\Windows\System32\config\SOFTWARE"
-
-    reg load HKLM\zSYSTEM     "$ScratchDir\Windows\System32\config\SYSTEM"
-
-
+    if ($regLoadFailed) {
+        & $Log "WARNING: Skipping registry tweaks due to hive load failure. Unloading any hives that were loaded..."
+        foreach ($h in $regHiveMap) {
+            reg unload "HKLM\$($h.Key)" 2>&1 | Out-Null
+        }
+    } else {
 
     & $Log "Bypassing system requirements..."
 
@@ -470,7 +534,12 @@ function Invoke-ClarkISOScript {
 
                     $relPath  = $absPath -replace '^[A-Za-z]:[/\\]', ''
 
-                    $destPath = Join-Path $ScratchDir $relPath
+                    $destPath = [System.IO.Path]::GetFullPath((Join-Path $ScratchDir $relPath))
+                    $scratchNorm = [System.IO.Path]::GetFullPath($ScratchDir).TrimEnd('\')
+                    if (-not $destPath.StartsWith($scratchNorm + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+                        & $Log "WARNING: Skipping autounattend File node with path traversal outside mount directory: $absPath -> $destPath"
+                        continue
+                    }
 
                     New-Item -Path (Split-Path $destPath -Parent) -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
 
@@ -500,6 +569,8 @@ function Invoke-ClarkISOScript {
 
             }
 
+            $autoUnattendXmlParsedOk = $true
+
         } catch {
 
             & $Log "Warning: could not pre-stage setup scripts from autounattend.xml: $_"
@@ -508,13 +579,17 @@ function Invoke-ClarkISOScript {
 
 
 
-        if ($ISOContentsDir -and (Test-Path $ISOContentsDir)) {
+        if ($autoUnattendXmlParsedOk -and $ISOContentsDir -and (Test-Path $ISOContentsDir)) {
 
             $isoDest = Join-Path $ISOContentsDir "autounattend.xml"
 
             Set-Content -Path $isoDest -Value $normalizedAutoUnattendXml -Encoding UTF8 -Force
 
             & $Log "Written autounattend.xml to ISO root ($isoDest)."
+
+        } elseif (-not $autoUnattendXmlParsedOk -and $ISOContentsDir) {
+
+            & $Log "WARNING: Skipping autounattend.xml write to ISO root — XML parsing failed earlier."
 
         }
 
@@ -608,21 +683,29 @@ function Invoke-ClarkISOScript {
 
     Set-ISOScriptReg 'HKLM\zSOFTWARE\Policies\Microsoft\Windows\Windows Mail' 'PreventRun' 'REG_DWORD' '1'
 
-
-
     & $Log "Unloading offline registry hives..."
 
-    reg unload HKLM\zCOMPONENTS
+    [gc]::Collect()
+    [gc]::WaitForPendingFinalizers()
+    Start-Sleep -Milliseconds 500
 
-    reg unload HKLM\zDEFAULT
+    $hiveNames = @('zCOMPONENTS', 'zDEFAULT', 'zNTUSER', 'zSOFTWARE', 'zSYSTEM')
+    foreach ($hive in $hiveNames) {
+        $maxRetries = 3
+        for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+            reg unload "HKLM\$hive" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            & $Log "Warning: reg unload HKLM\$hive failed (attempt $attempt/$maxRetries, exit code $LASTEXITCODE)."
+            [gc]::Collect()
+            [gc]::WaitForPendingFinalizers()
+            Start-Sleep -Seconds (1 * $attempt)
+        }
+        if ($LASTEXITCODE -ne 0) {
+            & $Log "ERROR: Failed to unload HKLM\$hive after $maxRetries attempts. WIM save may fail or produce a corrupt image."
+        }
+    }
 
-    reg unload HKLM\zNTUSER
-
-    reg unload HKLM\zSOFTWARE
-
-    reg unload HKLM\zSYSTEM
-
-
+    } # end if (-not $regLoadFailed)
 
     # ── 5. Delete scheduled task definition files ─────────────────────────────
 

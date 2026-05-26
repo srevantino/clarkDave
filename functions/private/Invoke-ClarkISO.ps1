@@ -176,6 +176,7 @@ function Get-ClarkISOOrphanedMounts {
 }
 
 function Invoke-ClarkISORepairOrphanedMounts {
+    # Replaced at compile time by Invoke-ClarkIsoBuildSupport.ps1 (loads later in A-SYS_clark.ps1).
     $orphans = @(Get-ClarkISOOrphanedMounts)
     if ($orphans.Count -eq 0) { return $false }
 
@@ -243,10 +244,9 @@ function Invoke-ClarkISODismountSaveWithHeartbeat {
                 & $OnLog 'Still saving install.wim - please wait (do not close Clark).'
             }
         }
-        $job | Receive-Job -ErrorAction Stop | Out-Null
+        $jobOutput = @($job | Receive-Job -ErrorAction SilentlyContinue 2>&1)
         if ($job.State -eq 'Failed') {
-            $errs = @(Receive-Job -Job $job -ErrorAction SilentlyContinue 2>&1)
-            $msg = if ($errs.Count) { ($errs | Out-String).Trim() } else { 'DISM save job failed.' }
+            $msg = if ($jobOutput.Count) { ($jobOutput | Out-String).Trim() } else { 'DISM save job failed.' }
             throw $msg
         }
     } finally {
@@ -481,10 +481,38 @@ function Set-ClarkISODirectDownloadVersions {
 }
 
 function Get-ClarkISODirectDownloadLanguageCatalog {
-    # Label shown to user + Fido language token.
-    # Keep only US English to avoid locale confusion in downloads.
     return @(
-        @{ Label = "English (US)"; FidoLanguage = "English" }
+        @{ Label = "English (US)";              FidoLanguage = "English" }
+        @{ Label = "English (International)";   FidoLanguage = "English International" }
+        @{ Label = "French";                    FidoLanguage = "French" }
+        @{ Label = "German";                    FidoLanguage = "German" }
+        @{ Label = "Spanish (International)";   FidoLanguage = "Spanish" }
+        @{ Label = "Spanish (Latin America)";   FidoLanguage = "Spanish (Mexico)" }
+        @{ Label = "Italian";                   FidoLanguage = "Italian" }
+        @{ Label = "Portuguese (Brazil)";       FidoLanguage = "Brazilian Portuguese" }
+        @{ Label = "Portuguese (Portugal)";     FidoLanguage = "Portuguese" }
+        @{ Label = "Dutch";                     FidoLanguage = "Dutch" }
+        @{ Label = "Russian";                   FidoLanguage = "Russian" }
+        @{ Label = "Japanese";                  FidoLanguage = "Japanese" }
+        @{ Label = "Korean";                    FidoLanguage = "Korean" }
+        @{ Label = "Chinese (Simplified)";      FidoLanguage = "Chinese (Simplified)" }
+        @{ Label = "Chinese (Traditional)";     FidoLanguage = "Chinese (Traditional)" }
+        @{ Label = "Polish";                    FidoLanguage = "Polish" }
+        @{ Label = "Turkish";                   FidoLanguage = "Turkish" }
+        @{ Label = "Swedish";                   FidoLanguage = "Swedish" }
+        @{ Label = "Danish";                    FidoLanguage = "Danish" }
+        @{ Label = "Norwegian";                 FidoLanguage = "Norwegian" }
+        @{ Label = "Finnish";                   FidoLanguage = "Finnish" }
+        @{ Label = "Czech";                     FidoLanguage = "Czech" }
+        @{ Label = "Greek";                     FidoLanguage = "Greek" }
+        @{ Label = "Hungarian";                 FidoLanguage = "Hungarian" }
+        @{ Label = "Romanian";                  FidoLanguage = "Romanian" }
+        @{ Label = "Croatian";                  FidoLanguage = "Croatian" }
+        @{ Label = "Slovak";                    FidoLanguage = "Slovak" }
+        @{ Label = "Thai";                      FidoLanguage = "Thai" }
+        @{ Label = "Arabic";                    FidoLanguage = "Arabic" }
+        @{ Label = "Hebrew";                    FidoLanguage = "Hebrew" }
+        @{ Label = "Ukrainian";                 FidoLanguage = "Ukrainian" }
     )
 }
 
@@ -540,8 +568,20 @@ function Get-ClarkFidoScriptPath {
     $fidoPath = Join-Path $toolsDir "Fido.ps1"
     if (-not (Test-Path $fidoPath)) {
         Write-Win11ISOLog "Downloading Fido helper script from GitHub..."
-        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pbatard/Fido/master/Fido.ps1" -OutFile $fidoPath -UseBasicParsing
-        Write-Win11ISOLog "Fido helper script downloaded."
+        $fidoTmp = "$fidoPath.tmp"
+        try {
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pbatard/Fido/master/Fido.ps1" -OutFile $fidoTmp -UseBasicParsing -ErrorAction Stop
+        } catch {
+            if (Test-Path $fidoTmp) { Remove-Item $fidoTmp -Force -ErrorAction SilentlyContinue }
+            throw "Failed to download Fido helper script: $($_.Exception.Message)"
+        }
+        $fidoContent = Get-Content $fidoTmp -Raw -ErrorAction Stop
+        if ($fidoContent.Length -lt 1024 -or $fidoContent -notmatch 'param\s*\(') {
+            Remove-Item $fidoTmp -Force -ErrorAction SilentlyContinue
+            throw "Downloaded Fido.ps1 appears truncated or invalid (size: $($fidoContent.Length) chars). The download may have been interrupted."
+        }
+        Move-Item $fidoTmp $fidoPath -Force
+        Write-Win11ISOLog "Fido helper script downloaded and validated ($('{0:N0}' -f $fidoContent.Length) chars)."
     }
 
     return $fidoPath
@@ -613,7 +653,7 @@ function New-ClarkISODownloadHttpClient {
         $client.Timeout = [TimeSpan]::FromDays(7)
     }
     [void]$client.DefaultRequestHeaders.UserAgent.ParseAdd(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
     )
     [void]$client.DefaultRequestHeaders.TryAddWithoutValidation('Accept', '*/*')
     return $client
@@ -742,15 +782,53 @@ function Invoke-ClarkISOBitsOrHttpDownload {
 
         try {
             $client = New-ClarkISODownloadHttpClient
-            $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+            $existingBytes = 0L
+            $fileMode = [System.IO.FileMode]::Create
+
+            if (Test-Path -LiteralPath $Destination) {
+                $existingBytes = (Get-Item -LiteralPath $Destination).Length
+            }
+
+            if ($existingBytes -gt 0) {
+                $headReq = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Head, $Url)
+                $headResp = $client.SendAsync($headReq).GetAwaiter().GetResult()
+                $supportsRange = $headResp.Headers.AcceptRanges -and ($headResp.Headers.AcceptRanges -contains 'bytes')
+                $headResp.Dispose()
+                $headReq.Dispose()
+
+                if ($supportsRange) {
+                    Write-Win11ISOLog "Partial file found ($([Math]::Round($existingBytes / 1MB, 1)) MB). Server supports Range requests - resuming."
+                    $rangeReq = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $Url)
+                    $rangeReq.Headers.Range = [System.Net.Http.Headers.RangeHeaderValue]::new($existingBytes, $null)
+                    $response = $client.SendAsync($rangeReq, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+                    $rangeReq.Dispose()
+                    if ([int]$response.StatusCode -eq 206) {
+                        $fileMode = [System.IO.FileMode]::Append
+                    } else {
+                        Write-Win11ISOLog "Server returned $([int]$response.StatusCode) instead of 206 Partial Content - restarting download."
+                        $response.Dispose()
+                        $response = $null
+                        $existingBytes = 0L
+                    }
+                } else {
+                    Write-Win11ISOLog "Server does not support Range requests - restarting download from scratch."
+                    $existingBytes = 0L
+                }
+            }
+
+            if (-not $response) {
+                $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+            }
             $response.EnsureSuccessStatusCode()
-            $totalBytes = [double]($response.Content.Headers.ContentLength | ForEach-Object { $_ })
-            if (-not $totalBytes) { $totalBytes = 0.0 }
+
+            $contentLength = [double]($response.Content.Headers.ContentLength | ForEach-Object { $_ })
+            $totalBytes = if ($contentLength -and $contentLength -gt 0) { $contentLength + $existingBytes } else { 0.0 }
 
             $sourceStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
-            $targetStream = [System.IO.File]::Open($Destination, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+            $targetStream = [System.IO.File]::Open($Destination, $fileMode, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
             $buffer = New-Object byte[] (1024 * 1024)
-            $downloadedBytes = 0.0
+            $downloadedBytes = [double]$existingBytes
+            $sessionDownloadedBytes = 0.0
             $lastUpdate = Get-Date
             $httpStart = Get-Date
 
@@ -772,11 +850,12 @@ function Invoke-ClarkISOBitsOrHttpDownload {
 
                 $targetStream.Write($buffer, 0, $read)
                 $downloadedBytes += $read
+                $sessionDownloadedBytes += $read
 
                 if (((Get-Date) - $lastUpdate).TotalMilliseconds -ge 1000) {
                     $percent = if ($totalBytes -gt 0) { [int][Math]::Round(($downloadedBytes / $totalBytes) * 100, 0) } else { 0 }
                     $elapsedSeconds = [Math]::Max(1.0, ((Get-Date) - $httpStart).TotalSeconds)
-                    $speedBps = if ($downloadedBytes -gt 0) { $downloadedBytes / $elapsedSeconds } else { 0.0 }
+                    $speedBps = if ($sessionDownloadedBytes -gt 0) { $sessionDownloadedBytes / $elapsedSeconds } else { 0.0 }
                     $remainingBytes = [Math]::Max(0.0, $totalBytes - $downloadedBytes)
                     $etaText = if ($speedBps -gt 0 -and $totalBytes -gt 0) {
                         $etaSeconds = [int][Math]::Ceiling($remainingBytes / $speedBps)
@@ -965,10 +1044,16 @@ function Invoke-ClarkISODirectDownload {
                 }
             }
 
+            Set-ClarkProgressBar -Label "Verifying ISO integrity (SHA-256)..." -Percent 98
+            Set-ClarkISODownloadProgress -Percent 98 -Text "Verifying ISO integrity..."
+            Write-Win11ISOLog "Computing SHA-256 hash of downloaded ISO..."
+            $isoHash = (Get-FileHash -Path $destination -Algorithm SHA256).Hash
+            Write-Win11ISOLog "ISO SHA-256: $isoHash"
+
             Set-ClarkProgressBar -Label "Download complete" -Percent 100
             Set-ClarkISODownloadProgress -Percent 100 -Text "Download complete: $destination"
             Write-Win11ISOLog "ISO download completed: $destination"
-            $null = Show-ClarkISOMessageBox -Message "ISO download complete:`n`n$destination" -Title "Download Complete" -Button OK -Image Information
+            $null = Show-ClarkISOMessageBox -Message "ISO download complete:`n`n$destination`n`nSHA-256: $isoHash" -Title "Download Complete" -Button OK -Image Information
         } catch {
             $errMsg = [string]$_.Exception.Message
             if ($errMsg -match "stopped by user") {
@@ -1127,6 +1212,13 @@ function Invoke-ClarkISOMountAndVerify {
 
         try {
             Write-Win11ISOLog "Mounting ISO: $isoPath"
+            MountVerify-SetProgress "Computing SHA-256..." 5
+            try {
+                $isoHash = (Get-FileHash -Path $isoPath -Algorithm SHA256).Hash
+                Write-Win11ISOLog "ISO SHA-256: $isoHash"
+            } catch {
+                Write-Win11ISOLog "Warning: could not compute ISO hash: $($_.Exception.Message)"
+            }
             MountVerify-SetProgress "Mounting ISO..." 10
 
             Mount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null
@@ -1150,7 +1242,7 @@ function Invoke-ClarkISOMountAndVerify {
             $esdPath = Join-Path $driveLetter "sources\install.esd"
 
             if (-not (Test-Path $wimPath) -and -not (Test-Path $esdPath)) {
-                Dismount-DiskImage -ImagePath $isoPath | Out-Null
+                try { Dismount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null } catch { Write-Win11ISOLog "Warning: could not dismount ISO: $($_.Exception.Message)" }
                 Write-Win11ISOLog "ERROR: install.wim/install.esd not found - not a valid Windows ISO."
                 $sync["Form"].Dispatcher.Invoke([System.Action]{
                     [System.Windows.MessageBox]::Show(
@@ -1170,11 +1262,15 @@ function Invoke-ClarkISOMountAndVerify {
                 $_.ImageName -notmatch 'Windows Server'
             }
             if (-not $clientImages) {
-                Dismount-DiskImage -ImagePath $isoPath | Out-Null
-                Write-Win11ISOLog "ERROR: No Windows 10 or Windows 11 client edition found in the image."
+                $foundNames = ($imageInfo | ForEach-Object { $_.ImageName }) -join "`n  - "
+                if (-not $foundNames) { $foundNames = "(none)" }
+                try { Dismount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null } catch { Write-Win11ISOLog "Warning: could not dismount ISO: $($_.Exception.Message)" }
+                Write-Win11ISOLog "ERROR: No Windows 10 or Windows 11 client edition found. Editions present: $foundNames"
+                $sync["__isoFoundEditions"] = $foundNames
                 $sync["Form"].Dispatcher.Invoke([System.Action]{
+                    $editions = [string]$sync["__isoFoundEditions"]
                     [System.Windows.MessageBox]::Show(
-                        "No Windows 10 or Windows 11 client edition was found in this ISO.`n`nUse an official Windows 10 or Windows 11 ISO from Microsoft (not Windows Server).",
+                        "No Windows 10 or Windows 11 client edition was found in this ISO.`n`nEditions found:`n  - $editions`n`nUse an official Windows 10 or Windows 11 ISO from Microsoft (not Windows Server).",
                         "Unsupported ISO", "OK", "Error")
                 })
                 return
@@ -1672,14 +1768,11 @@ function Invoke-ClarkISOModify {
     $sync["Win11ISOModifying"] = $true
     $sync.ProcessRunning = $true
 
-    $existingWorkDir = @(Get-ClarkISOWorkDirectoryCandidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+    Reset-ClarkIsoModifyStop -Sync $sync
+    Set-ClarkIsoModifyControlState -Sync $sync -IsRunning $true
 
-    $workDir = if ($existingWorkDir) {
-        Write-Win11ISOLog "Reusing existing temp directory: $($existingWorkDir.FullName)"
-        $existingWorkDir.FullName
-    } else {
-        Join-Path $env:TEMP "ASYS_WinISO_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-    }
+    $workDir = Resolve-ClarkIsoWorkDirectory -Log { param($m) Write-Win11ISOLog $m } `
+        -GetCandidates { Get-ClarkISOWorkDirectoryCandidates }
 
     $pathCandidates = @(
         (Join-Path $PSScriptRoot "tools"),
@@ -1736,10 +1829,12 @@ function Invoke-ClarkISOModify {
     $dismountHeartbeatDef = "function Invoke-ClarkISODismountSaveWithHeartbeat {`n" + ${function:Invoke-ClarkISODismountSaveWithHeartbeat}.ToString() + "`n}"
     $getLogDef        = "function Get-Win11ISOLogFilePath {`n" + ${function:Get-Win11ISOLogFilePath}.ToString() + "`n}"
     $logCoreDef       = "function Write-Win11ISOLogCore {`n" + ${function:Write-Win11ISOLogCore}.ToString() + "`n}"
+    $clarkIsoWorkerFuncDefs = @(Get-ClarkIsoWorkerFunctionDefinitions)
     $runspace.SessionStateProxy.SetVariable("isoScriptFuncDef",       $isoScriptFuncDef)
     $runspace.SessionStateProxy.SetVariable("dismountHeartbeatDef",   $dismountHeartbeatDef)
     $runspace.SessionStateProxy.SetVariable("getLogDef",                $getLogDef)
     $runspace.SessionStateProxy.SetVariable("logCoreDef",               $logCoreDef)
+    $runspace.SessionStateProxy.SetVariable("clarkIsoWorkerFuncDefs",   $clarkIsoWorkerFuncDefs)
 
     $script = [Management.Automation.PowerShell]::Create()
     $script.Runspace = $runspace
@@ -1748,6 +1843,7 @@ function Invoke-ClarkISOModify {
         . ([scriptblock]::Create($dismountHeartbeatDef))
         . ([scriptblock]::Create($getLogDef))
         . ([scriptblock]::Create($logCoreDef))
+        foreach ($def in $clarkIsoWorkerFuncDefs) { . ([scriptblock]::Create($def)) }
         function Write-Win11ISOLog {
             param([string]$Message)
             $ts = (Get-Date).ToString("HH:mm:ss")
@@ -1788,11 +1884,20 @@ function Invoke-ClarkISOModify {
             $sync["Form"].Dispatcher.Invoke([System.Action]{
                 $sync["WPFWin11ISOSelectSection"].Visibility = "Collapsed"
                 $sync["WPFWin11ISOMountSection"].Visibility  = "Collapsed"
-                $sync["WPFWin11ISOModifySection"].Visibility = "Collapsed"
             })
 
             Log "Global log file: $(Get-Win11ISOLogFilePath)"
             Log "Creating working directory: $workDir"
+
+            $workDrive = [System.IO.Path]::GetPathRoot($workDir)
+            $driveInfo = [System.IO.DriveInfo]::new($workDrive)
+            $freeGB    = [Math]::Round($driveInfo.AvailableFreeSpace / 1GB, 1)
+            $minFreeGB = 20
+            Log "Disk space check: $freeGB GB free on $workDrive (minimum: $minFreeGB GB)."
+            if ($freeGB -lt $minFreeGB) {
+                throw "Insufficient disk space on $workDrive. The ISO build needs at least $minFreeGB GB free, but only $freeGB GB is available. Free up space and try again."
+            }
+
             $isoContents = Join-Path $workDir "iso_contents"
             $mountDir    = Join-Path $workDir "wim_mount"
             New-Item -ItemType Directory -Path $isoContents, $mountDir -Force | Out-Null
@@ -1800,12 +1905,18 @@ function Invoke-ClarkISOModify {
 
             Log "Copying ISO contents from $driveLetter to $isoContents..."
             & robocopy $driveLetter $isoContents /E /NFL /NDL /NJH /NJS | Out-Null
-            Log "ISO contents copied."
+            if ($LASTEXITCODE -ge 8) {
+                throw "Robocopy failed with exit code $LASTEXITCODE while copying ISO contents. The copy may be incomplete or corrupted."
+            }
+            Log "ISO contents copied (robocopy exit code: $LASTEXITCODE)."
             if ($toolsRoot) {
                 try {
                     Copy-ClarkAsysIsoPayload -IsoContentsDir $isoContents -ToolsRoot $toolsRoot
                     Log "ASYS payload copied to $(Join-Path $isoContents 'asys') (setup + platform-drivers)."
                 } catch {
+                    if ($fullDeploy) {
+                        throw "Failed to copy ASYS payload (required for Full ASYS Deployment mode): $_"
+                    }
                     Log "Warning: failed to copy ASYS payload: $_"
                 }
             }
@@ -1819,7 +1930,7 @@ function Invoke-ClarkISOModify {
                 SetProgress "Reading editions from install.esd..." 18
                 Log "install.esd detected. Reading available editions..."
                 $esdEditions = Get-WindowsImage -ImagePath $localEsd
-                $esdTargets  = @($esdEditions | Where-Object { $_.ImageName -match "\\bHome Single Language\\b|\\bHome$|\\bPro$" } | Sort-Object ImageIndex)
+                $esdTargets  = @($esdEditions | Where-Object { $_.ImageName -match "\bHome Single Language\b|\bHome$|\bPro$" } | Sort-Object ImageIndex)
                 if ($esdTargets.Count -eq 0) { $esdTargets = @($esdEditions | Sort-Object ImageIndex) }
                 Log "Exporting $($esdTargets.Count) edition(s) from ESD to install.wim..."
                 $esdIdx = 0
@@ -1834,7 +1945,7 @@ function Invoke-ClarkISOModify {
             }
 
             # ── Determine target editions (Home, Home SL, Pro) in install.wim ────────
-            Set-ItemProperty -Path $localWim -Name IsReadOnly -Value $false
+            Set-ItemProperty -Path $localWim -Name IsReadOnly -Value $false -ErrorAction Stop
             Log "Reading editions from install.wim..."
             $allWimEditions    = @(Get-WindowsImage -ImagePath $localWim)
             # Match only exact target editions: Home, Home Single Language, Pro
@@ -1858,9 +1969,25 @@ function Invoke-ClarkISOModify {
                 }).Count -gt 0
             }
 
+            # ── Export drivers once (shared across all editions) ──────────────────────
+            $sharedDriverExportPath = ""
+            if ($injectDrivers) {
+                Log "Exporting all drivers from running system (once, shared across editions)..."
+                $sharedDriverExportPath = Join-Path $workDir "Clark_DriverExport"
+                New-Item -Path $sharedDriverExportPath -ItemType Directory -Force | Out-Null
+                Export-WindowsDriver -Online -Destination $sharedDriverExportPath -ErrorAction Stop | Out-Null
+                $driverFileCount = @(Get-ChildItem -Path $sharedDriverExportPath -Recurse -File -ErrorAction SilentlyContinue).Count
+                if ($driverFileCount -eq 0) {
+                    Log "Warning: driver export produced no files — driver injection may be incomplete."
+                } else {
+                    Log "Driver export complete: $sharedDriverExportPath ($driverFileCount files)"
+                }
+            }
+
             # ── Apply ASYS modifications to each edition ──────────────────────────────
             $edIdx = 0
             foreach ($edition in $targetWimEditions) {
+                Stop-ClarkIsoModifyIfRequested -Sync $sync
                 $edIdx++
                 $pctStart = [int](25 + (($edIdx - 1) / $editionCount) * 50)
                 $pctEnd   = [int](25 + ($edIdx / $editionCount) * 50)
@@ -1868,8 +1995,13 @@ function Invoke-ClarkISOModify {
                 # Defensive cleanup in case a previous iteration left the mount active.
                 if (Test-MountPathActive -Path $mountDir) {
                     Log "Warning: stale mount detected at $mountDir. Discarding before next mount..."
-                    Dismount-WindowsImage -Path $mountDir -Discard -ErrorAction SilentlyContinue | Out-Null
+                    Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
                     Start-Sleep -Seconds 1
+                } elseif (Test-Path $mountDir) {
+                    if (@(Get-ChildItem -Path $mountDir -Force -ErrorAction SilentlyContinue).Count -gt 0) {
+                        Log "Warning: orphan wim_mount folder contents - clearing..."
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
+                    }
                 }
 
                 SetProgress "[$edIdx/$editionCount] Mounting: $($edition.ImageName)..." $pctStart
@@ -1881,12 +2013,16 @@ function Invoke-ClarkISOModify {
                 Log "Applying ASYS modifications..."
                 # Only inject autounattend.xml to ISO root on the first pass (it's ISO-level, not per-edition)
                 $isoInjectDir = if ($edIdx -eq 1) { $isoContents } else { "" }
-                Invoke-ClarkISOScript -ScratchDir $mountDir -ISOContentsDir $isoInjectDir -AutoUnattendXml $autounattendContent -InjectCurrentSystemDrivers $injectDrivers -Log { param($m) Log $m }
+                Invoke-ClarkISOScript -ScratchDir $mountDir -ISOContentsDir $isoInjectDir -AutoUnattendXml $autounattendContent -InjectCurrentSystemDrivers $injectDrivers -DriverExportPath $sharedDriverExportPath -Log { param($m) Log $m }
 
                 SetProgress "[$edIdx/$editionCount] WinSxS cleanup: $($edition.ImageName)..." ([int]($pctStart + ($pctEnd - $pctStart) * 0.65))
                 Log "Running DISM component store cleanup (/ResetBase)..."
                 & dism /English "/image:$mountDir" /Cleanup-Image /StartComponentCleanup /ResetBase | ForEach-Object { Log $_ }
-                Log "Component store cleanup complete."
+                if ($LASTEXITCODE -ne 0) {
+                    Log "Warning: DISM /ResetBase exited with code $LASTEXITCODE for '$($edition.ImageName)'. The image may retain superseded components."
+                } else {
+                    Log "Component store cleanup complete."
+                }
 
                 SetProgress "[$edIdx/$editionCount] Saving: $($edition.ImageName)..." ([int]($pctStart + ($pctEnd - $pctStart) * 0.9))
                 Log "Dismounting and saving install.wim (this takes several minutes)..."
@@ -1922,14 +2058,30 @@ function Invoke-ClarkISOModify {
             $finalEditions  = @(Get-WindowsImage -ImagePath $localWimStrip | Where-Object {
                 $_.ImageName -match "\bHome Single Language\b|\bHome$|\bPro$"
             } | Sort-Object ImageIndex)
-            foreach ($fe in $finalEditions) {
-                Log "  Exporting to stripped WIM: $($fe.ImageName)..."
-                Export-WindowsImage -SourceImagePath $localWimStrip -SourceIndex $fe.ImageIndex `
-                    -DestinationImagePath $strippedWim -ErrorAction Stop | Out-Null
+            if ($finalEditions.Count -eq 0) {
+                Log "Warning: no Home/Pro editions matched for stripping - keeping original install.wim intact."
+            } else {
+                foreach ($fe in $finalEditions) {
+                    Log "  Exporting to stripped WIM: $($fe.ImageName)..."
+                    Export-WindowsImage -SourceImagePath $localWimStrip -SourceIndex $fe.ImageIndex `
+                        -DestinationImagePath $strippedWim -ErrorAction Stop | Out-Null
+                }
+                if (-not (Test-Path $strippedWim)) {
+                    throw "Stripped WIM export produced no output file. Aborting to protect original install.wim."
+                }
+                $strippedSize = (Get-Item $strippedWim).Length
+                if ($strippedSize -lt 1MB) {
+                    throw "Stripped WIM is suspiciously small ($([Math]::Round($strippedSize / 1KB)) KB). Aborting to protect original install.wim."
+                }
+                try {
+                    Get-WindowsImage -ImagePath $strippedWim -ErrorAction Stop | Out-Null
+                } catch {
+                    throw "Stripped WIM failed integrity check: $($_.Exception.Message). Original install.wim preserved."
+                }
+                Remove-Item $localWimStrip -Force
+                Rename-Item $strippedWim $localWimStrip
+                Log "Strip complete. Final WIM: $(($finalEditions | ForEach-Object { $_.ImageName }) -join ", ")"
             }
-            Remove-Item $localWimStrip -Force
-            Rename-Item $strippedWim $localWimStrip
-            Log "Strip complete. Final WIM: $(($finalEditions | ForEach-Object { $_.ImageName }) -join ", ")"
 
             if ($fullDeploy) {
                 Log "Injecting OEM folder (Full ASYS Deployment mode)..."
@@ -1947,7 +2099,11 @@ function Invoke-ClarkISOModify {
 
             SetProgress "Dismounting source ISO..." 80
             Log "Dismounting original ISO..."
-            Dismount-DiskImage -ImagePath $isoPath | Out-Null
+            try {
+                Dismount-DiskImage -ImagePath $isoPath -ErrorAction Stop | Out-Null
+            } catch {
+                Log "Warning: could not dismount source ISO: $($_.Exception.Message). It may remain mounted until the next reboot."
+            }
 
             $sync["Win11ISOWorkDir"]           = $workDir
             $sync["Win11ISOContentsDir"]       = $isoContents
@@ -1960,15 +2116,33 @@ function Invoke-ClarkISOModify {
                 $sync["WPFWin11ISOOutputSection"].Visibility = "Visible"
             })
         } catch {
-            Log "ERROR during modification: $($_.Exception.Message)"
-            Log "ERROR details: $($_ | Out-String)"
+            if ($_.Exception.Message -match 'stopped by user') {
+                Log "ISO modification stopped by user."
+            } else {
+                Log "ERROR during modification: $($_.Exception.Message)"
+                Log "ERROR details: $($_ | Out-String)"
+                $sync["__isoLastErrorMessage"] = "$($_.Exception.Message)"
+                $sync["Form"].Dispatcher.Invoke([System.Action]{
+                    $m = [string]$sync["__isoLastErrorMessage"]
+                    [System.Windows.MessageBox]::Show(
+                        "An error occurred during install.wim modification:`n`n$m",
+                        "Modification Error", "OK", "Error")
+                })
+            }
 
             try {
                 if (Test-Path $mountDir) {
-                    $mountedImages = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $mountDir }
+                    $mountDirNorm = [System.IO.Path]::GetFullPath($mountDir).TrimEnd('\')
+                    $mountedImages = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue | Where-Object {
+                        try { [System.IO.Path]::GetFullPath($_.Path).TrimEnd('\') -ieq $mountDirNorm } catch { $false }
+                    }
                     if ($mountedImages) {
-                        Log "Cleaning up: dismounting install.wim (discarding changes)..."
-                        Dismount-WindowsImage -Path $mountDir -Discard -ErrorAction SilentlyContinue | Out-Null
+                        foreach ($img in $mountedImages) {
+                            Log "Cleaning up: dismounting install.wim (discarding changes)..."
+                            Clear-ClarkIsoWimMount -MountPath $img.Path -Discard -Log { param($m) Log $m } | Out-Null
+                        }
+                    } elseif (Test-Path $mountDir) {
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
                     }
                 }
             } catch { Log "Warning: could not dismount install.wim during cleanup: $_" }
@@ -1988,18 +2162,12 @@ function Invoke-ClarkISOModify {
                 }
             } catch { Log "Warning: could not remove temp directory during cleanup: $_" }
 
-            $sync["__isoLastErrorMessage"] = "$($_.Exception.Message)"
-            $sync["Form"].Dispatcher.Invoke([System.Action]{
-                $m = [string]$sync["__isoLastErrorMessage"]
-                [System.Windows.MessageBox]::Show(
-                    "An error occurred during install.wim modification:`n`n$m",
-                    "Modification Error", "OK", "Error")
-            })
         } finally {
             Start-Sleep -Milliseconds 800
             $sync["Win11ISOModifying"] = $false
             $sync.ProcessRunning = $false
             $sync["Form"].Dispatcher.Invoke([System.Action]{
+                Set-ClarkIsoModifyControlState -Sync $sync -IsRunning $false
                 $sync.progressBarTextBlock.Text    = ""
                 $sync.progressBarTextBlock.ToolTip = ""
                 $sync.ProgressBar.Value            = 0
@@ -2059,8 +2227,9 @@ function Invoke-ClarkISOCheckExistingWork {
 
     $staleMountDir = Join-Path $existingWorkDir.FullName "wim_mount"
     if ((Test-Path $staleMountDir) -and @(Get-ChildItem -Path $staleMountDir -Force -ErrorAction SilentlyContinue).Count) {
-        Write-Win11ISOLog "Incomplete modification detected (wim_mount still present). Use Clean & Reset before building again."
-        return
+        if (Invoke-ClarkISOCheckExistingWorkMountCleanup -WorkDir $existingWorkDir.FullName -Log { param($m) Write-Win11ISOLog $m }) {
+            return
+        }
     }
 
     $sync["Win11ISOWorkDir"]     = $existingWorkDir.FullName
@@ -2095,6 +2264,7 @@ function Invoke-ClarkISOCleanAndReset {
 
     $getLogDefClean  = "function Get-Win11ISOLogFilePath {`n" + ${function:Get-Win11ISOLogFilePath}.ToString() + "`n}"
     $logCoreDefClean = "function Write-Win11ISOLogCore {`n" + ${function:Write-Win11ISOLogCore}.ToString() + "`n}"
+    $clarkIsoWorkerFuncDefsClean = @(Get-ClarkIsoWorkerFunctionDefinitions)
 
     $runspace = [Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
     $runspace.ApartmentState = "STA"
@@ -2104,12 +2274,14 @@ function Invoke-ClarkISOCleanAndReset {
     $runspace.SessionStateProxy.SetVariable("workDir",      $workDir)
     $runspace.SessionStateProxy.SetVariable("getLogDef",    $getLogDefClean)
     $runspace.SessionStateProxy.SetVariable("logCoreDef",   $logCoreDefClean)
+    $runspace.SessionStateProxy.SetVariable("clarkIsoWorkerFuncDefs", $clarkIsoWorkerFuncDefsClean)
 
     $script = [Management.Automation.PowerShell]::Create()
     $script.Runspace = $runspace
     $script.AddScript({
         . ([scriptblock]::Create($getLogDef))
         . ([scriptblock]::Create($logCoreDef))
+        foreach ($def in $clarkIsoWorkerFuncDefs) { . ([scriptblock]::Create($def)) }
 
         function Log($msg) {
             $ts = (Get-Date).ToString("HH:mm:ss")
@@ -2152,17 +2324,19 @@ function Invoke-ClarkISOCleanAndReset {
                         foreach ($img in $mountedImages) {
                             Log "Dismounting WIM at: $($img.Path) (discarding changes)..."
                             SetProgress "Dismounting WIM image..." 3
-                            Dismount-WindowsImage -Path $img.Path -Discard -ErrorAction Stop | Out-Null
+                            Clear-ClarkIsoWimMount -MountPath $img.Path -Discard -Log { param($m) Log $m } | Out-Null
                             Log "WIM dismounted successfully."
                         }
                     } elseif (Test-Path $mountDir) {
-                        Log "No mounted WIM reported by Get-WindowsImage. Running DISM /Cleanup-Wim as a precaution..."
-                        SetProgress "Running DISM cleanup..." 3
-                        & dism /English /Cleanup-Wim 2>&1 | ForEach-Object { Log $_ }
+                        Log "Clearing orphan wim_mount folder..."
+                        SetProgress "Clearing wim_mount..." 3
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
                     }
                 } catch {
-                    Log "Warning: could not dismount WIM cleanly. Attempting DISM /Cleanup-Wim fallback: $_"
-                    try { & dism /English /Cleanup-Wim 2>&1 | ForEach-Object { Log $_ } } catch { Log "Warning: DISM /Cleanup-Wim also failed: $_" }
+                    Log "Warning: could not clear WIM mount cleanly: $_"
+                    if (Test-Path $mountDir) {
+                        Clear-ClarkIsoWimMount -MountPath $mountDir -Discard -Log { param($m) Log $m } | Out-Null
+                    }
                 }
             }
 
@@ -2243,7 +2417,8 @@ function Invoke-ClarkISOCleanAndReset {
         }
     }) | Out-Null
 
-    $script.BeginInvoke() | Out-Null
+    $sync["_isoCleanPowerShell"] = $script
+    $sync["_isoCleanAsyncResult"] = $script.BeginInvoke()
 }
 
 function Invoke-ClarkISOExport {
@@ -2382,7 +2557,21 @@ function Invoke-ClarkISOExport {
             Write-Win11ISOLog "Exporting to ISO: $outputISO"
             SetProgress "Building ISO..." 10
 
-            $bootData    = "2#p0,e,b`"$contentsDir\boot\etfsboot.com`"#pEF,e,b`"$contentsDir\efi\microsoft\boot\efisys.bin`""
+            $biosBootFile = Join-Path $contentsDir "boot\etfsboot.com"
+            if (-not (Test-Path $biosBootFile)) {
+                throw "BIOS boot file not found: $biosBootFile. The ISO contents may be incomplete."
+            }
+            $efiBootFile = Join-Path $contentsDir "efi\microsoft\boot\efisys.bin"
+            if (-not (Test-Path $efiBootFile)) {
+                $efiBootFallback = Join-Path $contentsDir "efi\microsoft\boot\efisys_noprompt.bin"
+                if (Test-Path $efiBootFallback) {
+                    Write-Win11ISOLog "efisys.bin not found; using efisys_noprompt.bin as fallback."
+                    $efiBootFile = $efiBootFallback
+                } else {
+                    throw "EFI boot file not found: neither efisys.bin nor efisys_noprompt.bin exists under $contentsDir\efi\microsoft\boot\."
+                }
+            }
+            $bootData    = "2#p0,e,b`"$biosBootFile`"#pEF,e,b`"$efiBootFile`""
             $oscdimgArgs = @("-m", "-o", "-u2", "-udfver102", "-bootdata:$bootData", "-l`"ASYS_MODIFIED`"", "`"$contentsDir`"", "`"$outputISO`"")
 
             Write-Win11ISOLog "Running oscdimg..."
@@ -2416,6 +2605,20 @@ function Invoke-ClarkISOExport {
             if ($proc.ExitCode -eq 0) {
                 SetProgress "ISO exported" 100
                 Write-Win11ISOLog "ISO exported successfully: $outputISO"
+
+                $exportWorkDir = $sync["Win11ISOWorkDir"]
+                if ($exportWorkDir -and (Test-Path $exportWorkDir)) {
+                    Write-Win11ISOLog "Cleaning up working directory: $exportWorkDir"
+                    try {
+                        Remove-Item -Path $exportWorkDir -Recurse -Force -ErrorAction Stop
+                        $sync["Win11ISOWorkDir"]     = $null
+                        $sync["Win11ISOContentsDir"] = $null
+                        Write-Win11ISOLog "Working directory cleaned successfully."
+                    } catch {
+                        Write-Win11ISOLog "Warning: could not auto-clean working directory: $($_.Exception.Message)"
+                    }
+                }
+
                 $sync["Form"].Dispatcher.Invoke([System.Action]{
                     [System.Windows.MessageBox]::Show("ISO exported successfully!`n`n$outputISO", "Export Complete", "OK", "Info")
                 })
